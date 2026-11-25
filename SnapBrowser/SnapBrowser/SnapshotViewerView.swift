@@ -31,7 +31,7 @@ struct SnapshotViewerView: View {
 
             switch mode {
             case .image: imagePane
-            case .archive: ArchiveWebView(fileURL: store.fileURL(for: item, name: "archive.webarchive"))
+            case .archive: ArchiveWebView(fileURL: archiveFileURL)
             case .text: textPane
             }
         }
@@ -42,6 +42,14 @@ struct SnapshotViewerView: View {
                 Button("元ページを開く") { onOpenURL(item.url) }
             }
         }
+    }
+
+    /// Archive pane source: the self-contained HTML when it exists
+    /// (v0.2+ snapshots), otherwise the .webarchive.
+    private var archiveFileURL: URL {
+        let full = store.fileURL(for: item, name: "full.html")
+        if FileManager.default.fileExists(atPath: full.path) { return full }
+        return store.fileURL(for: item, name: "archive.webarchive")
     }
 
     // MARK: - Panes

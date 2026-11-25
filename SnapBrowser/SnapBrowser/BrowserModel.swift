@@ -2,277 +2,162 @@ import Foundation
 import WebKit
 import UIKit
 
-/// Owns the single WKWebView for the browser tab and all SNAP capture logic.
+/// Tab manager for the browser (v0.2: multi-tab, matching the Android
+/// version's model — every tab keeps its WKWebView alive for the session).
 ///
 /// Persistence rule for this app: files + UserDefaults only.
 /// No Keychain anywhere (AltStore re-signing breaks Keychain access —
 /// that is what kept logging the user out of another sideloaded app).
 @MainActor
 final class BrowserModel: ObservableObject {
-    let webView: WKWebView
+    @Published private(set) var tabs: [BrowserTab] = []
+    @Published var activeTabID: UUID = UUID()
 
-    @Published var addressText: String = ""
-    @Published var pageTitle: String = ""
-    @Published var canGoBack: Bool = false
-    @Published var canGoForward: Bool = false
-    @Published var isLoading: Bool = false
-    @Published var estimatedProgress: Double = 0
+    let bookmarks = BookmarkStore()
+    let history = HistoryStore()
 
-    @Published var isSnapping: Bool = false
-    @Published var lastSnapResult: SnapResult?
+    private static let sessionKey = "session.tabs.v2"
+    private var didResolveArchives = false
 
-    private var observations: [NSKeyValueObservation] = []
-
-    static let homeURL = URL(string: "https://example.com")!
-    private static let lastURLKey = "lastURL"
+    var activeTab: BrowserTab {
+        tabs.first { $0.id == activeTabID } ?? tabs[0]
+    }
 
     init() {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
-        // iOS equivalent of Android's "desktop site" plumbing is left out of v0.1.
-        webView = WKWebView(frame: .zero, configuration: config)
-        webView.allowsBackForwardNavigationGestures = true
+        restoreSession()
+        if tabs.isEmpty {
+            let tab = makeTab()
+            tabs = [tab]
+            activeTabID = tab.id
+        }
+    }
 
-        observations.append(webView.observe(\.canGoBack, options: [.new]) { [weak self] wv, _ in
-            Task { @MainActor in self?.canGoBack = wv.canGoBack }
-        })
-        observations.append(webView.observe(\.canGoForward, options: [.new]) { [weak self] wv, _ in
-            Task { @MainActor in self?.canGoForward = wv.canGoForward }
-        })
-        observations.append(webView.observe(\.isLoading, options: [.new]) { [weak self] wv, _ in
-            Task { @MainActor in self?.isLoading = wv.isLoading }
-        })
-        observations.append(webView.observe(\.estimatedProgress, options: [.new]) { [weak self] wv, _ in
-            Task { @MainActor in self?.estimatedProgress = wv.estimatedProgress }
-        })
-        observations.append(webView.observe(\.title, options: [.new]) { [weak self] wv, _ in
-            Task { @MainActor in self?.pageTitle = wv.title ?? "" }
-        })
-        observations.append(webView.observe(\.url, options: [.new]) { [weak self] wv, _ in
-            Task { @MainActor in
-                guard let self else { return }
-                if let url = wv.url {
-                    self.addressText = url.absoluteString
-                    UserDefaults.standard.set(url.absoluteString, forKey: Self.lastURLKey)
+    // MARK: - Tab operations
+
+    private func makeTab(startURL: URL? = nil) -> BrowserTab {
+        let tab = BrowserTab(startURL: startURL)
+        tab.onVisit = { [weak self] title, url in
+            self?.history.record(title: title, url: url)
+            self?.persistSession()
+        }
+        return tab
+    }
+
+    @discardableResult
+    func newTab(url: URL? = nil) -> BrowserTab {
+        activeTab.capturePreview()
+        let tab = makeTab(startURL: url)
+        tabs.append(tab)
+        activeTabID = tab.id
+        persistSession()
+        return tab
+    }
+
+    func closeTab(_ tab: BrowserTab) {
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        let wasActive = tab.id == activeTabID
+        tabs.remove(at: index)
+        if tabs.isEmpty {
+            let fresh = makeTab()
+            tabs = [fresh]
+            activeTabID = fresh.id
+        } else if wasActive {
+            activeTabID = tabs[min(index, tabs.count - 1)].id
+        }
+        persistSession()
+    }
+
+    func selectTab(_ tab: BrowserTab) {
+        guard tab.id != activeTabID else { return }
+        activeTab.capturePreview()
+        activeTabID = tab.id
+        persistSession()
+    }
+
+    func captureAllPreviews() {
+        for tab in tabs { tab.capturePreview() }
+    }
+
+    /// Opens a URL in the active tab (used by bookmarks / history / library).
+    func openInActiveTab(_ urlString: String) {
+        if urlString.lowercased().hasPrefix("javascript:") {
+            activeTab.runBookmarklet(urlString)
+            return
+        }
+        guard let url = URL(string: urlString) else { return }
+        activeTab.load(url)
+        persistSession()
+    }
+
+    /// Opens a saved snapshot in a fresh tab, like the Android version.
+    func openArchive(item: SnapshotItem, store: SnapshotStore) {
+        let tab = newTab()
+        tab.openArchive(item: item, store: store)
+        persistSession()
+    }
+
+    // MARK: - Session persistence (URLs only; web views rebuild on launch)
+
+    private struct SessionTab: Codable {
+        var url: String?
+        var archiveFolder: String?
+    }
+
+    private struct SessionState: Codable {
+        var tabs: [SessionTab]
+        var activeIndex: Int
+    }
+
+    private func persistSession() {
+        let state = SessionState(
+            tabs: tabs.map { tab in
+                if let snapshot = tab.archiveSnapshot {
+                    return SessionTab(url: nil, archiveFolder: snapshot.folderName)
                 }
-            }
-        })
-
-        let start = UserDefaults.standard.string(forKey: Self.lastURLKey)
-            .flatMap(URL.init(string:)) ?? Self.homeURL
-        load(start)
-    }
-
-    // MARK: - Navigation
-
-    func loadAddressBar() {
-        let text = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        if let url = Self.urlFromAddressText(text) {
-            load(url)
-        }
-    }
-
-    func load(_ url: URL) {
-        webView.load(URLRequest(url: url))
-    }
-
-    func goBack() { webView.goBack() }
-    func goForward() { webView.goForward() }
-    func reload() { webView.reload() }
-
-    /// Accepts full URLs, bare domains, and plain search terms (Brave Search,
-    /// matching the Android version's default engine).
-    static func urlFromAddressText(_ text: String) -> URL? {
-        if let url = URL(string: text), url.scheme == "http" || url.scheme == "https" {
-            return url
-        }
-        let looksLikeDomain = text.contains(".") && !text.contains(" ")
-        if looksLikeDomain, let url = URL(string: "https://" + text) {
-            return url
-        }
-        var components = URLComponents(string: "https://search.brave.com/search")
-        components?.queryItems = [URLQueryItem(name: "q", value: text)]
-        return components?.url
-    }
-
-    // MARK: - SNAP
-
-    struct SnapResult {
-        var title: String
-        var url: String
-        var imageBytes: Int?
-        var archiveBytes: Int?
-        var textChars: Int?
-        var htmlBytes: Int?
-        var failures: [String]
-    }
-
-    /// One-tap snapshot, mirroring the Android 3-piece set:
-    /// full-page PNG + .webarchive (iOS's archive format) + body text,
-    /// plus the raw HTML source (the portable piece — .webarchive is Apple-only).
-    /// A component counts as saved only when its file actually exists on disk.
-    func snap(store: SnapshotStore) {
-        guard !isSnapping else { return }
-        isSnapping = true
-        lastSnapResult = nil
-
-        Task {
-            var failures: [String] = []
-            let sourceURL = webView.url ?? Self.homeURL
-            let title = webView.title ?? sourceURL.host ?? "ページ"
-
-            // 1) Full-page image (frame-resize capture; falls back to viewport).
-            var imageData: Data?
-            do {
-                let image = try await captureFullPageImage()
-                imageData = image.pngData()
-                if imageData == nil { failures.append("画像のPNG変換に失敗") }
-            } catch {
-                failures.append("画像: \(error.localizedDescription)")
-            }
-
-            // 2) Web archive (.webarchive, iOS 14+).
-            // NOTE: this API has NO async variant in the SDK (only the
-            // Result-based completion handler) — bridged manually below.
-            // Verified via CI typecheck (runs 10/11).
-            var archiveData: Data?
-            do {
-                archiveData = try await Self.createWebArchiveData(from: webView)
-            } catch {
-                failures.append("アーカイブ: \(error.localizedDescription)")
-            }
-
-            // 3) Body text via JS.
-            var text: String?
-            do {
-                let raw = try await webView.evaluateJavaScript("document.body ? document.body.innerText : ''")
-                text = raw as? String
-                if text == nil { failures.append("テキスト: 取得結果が文字列でない") }
-            } catch {
-                failures.append("テキスト: \(error.localizedDescription)")
-            }
-
-            // 4) Raw HTML via JS (portable archive companion).
-            var htmlData: Data?
-            do {
-                let raw = try await webView.evaluateJavaScript("document.documentElement ? document.documentElement.outerHTML : ''")
-                if let html = raw as? String {
-                    htmlData = Data(html.utf8)
+                if tab.showsStartPage {
+                    return SessionTab(url: nil, archiveFolder: nil)
                 }
-            } catch {
-                failures.append("HTML: \(error.localizedDescription)")
-            }
-
-            var result = SnapResult(title: title,
-                                    url: sourceURL.absoluteString,
-                                    imageBytes: nil, archiveBytes: nil,
-                                    textChars: nil, htmlBytes: nil,
-                                    failures: failures)
-            do {
-                let saved = try store.save(title: title,
-                                           url: sourceURL.absoluteString,
-                                           imageData: imageData,
-                                           archiveData: archiveData,
-                                           text: text,
-                                           htmlData: htmlData)
-                result.imageBytes = saved.imageBytes
-                result.archiveBytes = saved.archiveBytes
-                result.textChars = saved.textChars
-                result.htmlBytes = saved.htmlBytes
-                result.failures.append(contentsOf: saved.failures)
-            } catch {
-                result.failures.append("保存: \(error.localizedDescription)")
-            }
-
-            lastSnapResult = result
-            isSnapping = false
+                return SessionTab(url: tab.webView.url?.absoluteString, archiveFolder: nil)
+            },
+            activeIndex: tabs.firstIndex { $0.id == activeTabID } ?? 0)
+        if let data = try? JSONEncoder().encode(state) {
+            UserDefaults.standard.set(data, forKey: Self.sessionKey)
         }
     }
 
-    /// Full-page capture by temporarily growing the web view to the page's
-    /// content height, then snapshotting the whole frame.
-    ///
-    /// Caveats (also in FEASIBILITY.md): WKWebView's takeSnapshot only ever
-    /// captures a rect of the view, so pages taller than the cap below are
-    /// captured at reduced fidelity/fail over to the visible viewport.
-    /// Extremely long pages can also hit memory limits while the layer grows.
-    private func captureFullPageImage() async throws -> UIImage {
-        let webView = self.webView
-        let scrollView = webView.scrollView
-
-        let contentHeight = scrollView.contentSize.height
-        let viewportHeight = webView.bounds.height
-        let maxHeight: CGFloat = 16_000
-
-        guard contentHeight > viewportHeight + 1, contentHeight <= maxHeight else {
-            // Short page (or absurdly long): visible-area snapshot is the honest result.
-            return try await snapshotCurrentView()
-        }
-
-        let originalFrame = webView.frame
-        let originalOffset = scrollView.contentOffset
-        let originalSuperview = webView.superview
-
-        // Detach into a full-height frame offscreen, let it lay out, snapshot, restore.
-        webView.frame = CGRect(x: 0, y: 0,
-                               width: originalFrame.width,
-                               height: contentHeight)
-        scrollView.contentOffset = .zero
-        webView.setNeedsLayout()
-        webView.layoutIfNeeded()
-        try await Task.sleep(nanoseconds: 350_000_000)
-
-        do {
-            let config = WKSnapshotConfiguration()
-            config.rect = webView.bounds
-            let image = try await Self.takeSnapshot(of: webView, configuration: config)
-            webView.frame = originalFrame
-            _ = originalSuperview // frame restore is enough while attached; superview never changed
-            scrollView.contentOffset = originalOffset
-            return image
-        } catch {
-            webView.frame = originalFrame
-            scrollView.contentOffset = originalOffset
-            // Fall back to whatever is on screen rather than failing the whole snap.
-            return try await snapshotCurrentView()
-        }
-    }
-
-    private func snapshotCurrentView() async throws -> UIImage {
-        let config = WKSnapshotConfiguration()
-        config.rect = webView.bounds
-        return try await Self.takeSnapshot(of: webView, configuration: config)
-    }
-
-    // MARK: - WebKit completion-handler bridges
-    // Neither of these APIs gets an importer-generated async variant in the
-    // current SDK, so wrap the completion handlers explicitly.
-
-    private static func createWebArchiveData(from webView: WKWebView) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            webView.createWebArchiveData { result in
-                switch result {
-                case .success(let data):
-                    continuation.resume(returning: data)
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
+    private func restoreSession() {
+        guard let data = UserDefaults.standard.data(forKey: Self.sessionKey),
+              let state = try? JSONDecoder().decode(SessionState.self, from: data),
+              !state.tabs.isEmpty else { return }
+        var restored: [BrowserTab] = []
+        for entry in state.tabs {
+            if let folder = entry.archiveFolder {
+                let tab = makeTab()
+                tab.pendingArchiveFolderName = folder
+                restored.append(tab)
+            } else if let urlString = entry.url, let url = URL(string: urlString) {
+                restored.append(makeTab(startURL: url))
+            } else {
+                restored.append(makeTab())
             }
         }
+        tabs = restored
+        let index = min(max(state.activeIndex, 0), restored.count - 1)
+        activeTabID = restored[index].id
     }
 
-    private static func takeSnapshot(of webView: WKWebView,
-                                     configuration: WKSnapshotConfiguration) async throws -> UIImage {
-        try await withCheckedThrowingContinuation { continuation in
-            webView.takeSnapshot(with: configuration) { image, error in
-                if let image {
-                    continuation.resume(returning: image)
-                } else {
-                    continuation.resume(throwing: error ?? NSError(
-                        domain: "SnapBrowser", code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "スナップショット撮影に失敗"]))
-                }
+    /// Archive tabs restored from a previous session only know their folder
+    /// name; resolve them against the store once it is available.
+    func resolvePendingArchives(using store: SnapshotStore) {
+        guard !didResolveArchives else { return }
+        didResolveArchives = true
+        for tab in tabs {
+            guard let folder = tab.pendingArchiveFolderName else { continue }
+            tab.pendingArchiveFolderName = nil
+            if let item = store.items.first(where: { $0.folderName == folder }) {
+                tab.openArchive(item: item, store: store)
+            } else {
+                tab.showStartPage()
             }
         }
     }

@@ -4,11 +4,12 @@ import Foundation
 ///   image.png          full-page (or viewport) capture
 ///   archive.webarchive iOS web archive (Apple-only format, ≠ MHTML)
 ///   page.html          raw HTML source (portable)
+///   full.html          self-contained HTML (CSS/images inlined, v0.2+)
 ///   text.txt           extracted body text
 ///   meta.json          title / url / createdAt / per-file byte counts
 ///
 /// Files only — no database, no Keychain.
-struct SnapshotItem: Identifiable, Codable, Equatable {
+struct SnapshotItem: Identifiable, Codable, Equatable, Hashable {
     var id: String
     var title: String
     var url: String
@@ -18,6 +19,7 @@ struct SnapshotItem: Identifiable, Codable, Equatable {
     var archiveBytes: Int?
     var textChars: Int?
     var htmlBytes: Int?
+    var fullHTMLBytes: Int?
 }
 
 final class SnapshotStore: ObservableObject {
@@ -41,6 +43,7 @@ final class SnapshotStore: ObservableObject {
         var archiveBytes: Int?
         var textChars: Int?
         var htmlBytes: Int?
+        var fullHTMLBytes: Int?
         var failures: [String]
     }
 
@@ -52,7 +55,8 @@ final class SnapshotStore: ObservableObject {
               imageData: Data?,
               archiveData: Data?,
               text: String?,
-              htmlData: Data?) throws -> SaveOutcome {
+              htmlData: Data?,
+              fullHTMLData: Data? = nil) throws -> SaveOutcome {
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
 
         let id = UUID().uuidString
@@ -64,7 +68,8 @@ final class SnapshotStore: ObservableObject {
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
 
         var outcome = SaveOutcome(imageBytes: nil, archiveBytes: nil,
-                                  textChars: nil, htmlBytes: nil, failures: [])
+                                  textChars: nil, htmlBytes: nil,
+                                  fullHTMLBytes: nil, failures: [])
 
         func writeVerified(_ data: Data?, _ name: String) -> Int? {
             guard let data, !data.isEmpty else { return nil }
@@ -84,6 +89,7 @@ final class SnapshotStore: ObservableObject {
         outcome.imageBytes = writeVerified(imageData, "image.png")
         outcome.archiveBytes = writeVerified(archiveData, "archive.webarchive")
         outcome.htmlBytes = writeVerified(htmlData, "page.html")
+        outcome.fullHTMLBytes = writeVerified(fullHTMLData, "full.html")
         if let text {
             outcome.textChars = text.count
             _ = writeVerified(Data(text.utf8), "text.txt")
@@ -97,7 +103,8 @@ final class SnapshotStore: ObservableObject {
                                 imageBytes: outcome.imageBytes,
                                 archiveBytes: outcome.archiveBytes,
                                 textChars: outcome.textChars,
-                                htmlBytes: outcome.htmlBytes)
+                                htmlBytes: outcome.htmlBytes,
+                                fullHTMLBytes: outcome.fullHTMLBytes)
         let meta = try JSONEncoder.snapshotEncoder.encode(item)
         try meta.write(to: folder.appendingPathComponent("meta.json"), options: .atomic)
 

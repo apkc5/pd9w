@@ -15,6 +15,15 @@
 		0C0000000000000000000006 /* SnapshotLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000006 /* SnapshotLibraryView.swift */; };
 		0C0000000000000000000007 /* SnapshotViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000007 /* SnapshotViewerView.swift */; };
 		0C0000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000008 /* Assets.xcassets */; };
+		0C0000000000000000000010 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000010 /* Theme.swift */; };
+		0C0000000000000000000011 /* BrowserTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000011 /* BrowserTab.swift */; };
+		0C0000000000000000000012 /* TabOverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000012 /* TabOverviewView.swift */; };
+		0C0000000000000000000013 /* StartPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000013 /* StartPageView.swift */; };
+		0C0000000000000000000014 /* BookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000014 /* BookmarkStore.swift */; };
+		0C0000000000000000000015 /* BookmarksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000015 /* BookmarksView.swift */; };
+		0C0000000000000000000016 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000016 /* HistoryStore.swift */; };
+		0C0000000000000000000017 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000017 /* HistoryView.swift */; };
+		0C0000000000000000000018 /* SelfContainedHTML.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000018 /* SelfContainedHTML.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +37,15 @@
 		0B0000000000000000000007 /* SnapshotViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotViewerView.swift; sourceTree = "<group>"; };
 		0B0000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		0B0000000000000000000009 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		0B0000000000000000000010 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		0B0000000000000000000011 /* BrowserTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserTab.swift; sourceTree = "<group>"; };
+		0B0000000000000000000012 /* TabOverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabOverviewView.swift; sourceTree = "<group>"; };
+		0B0000000000000000000013 /* StartPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartPageView.swift; sourceTree = "<group>"; };
+		0B0000000000000000000014 /* BookmarkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarkStore.swift; sourceTree = "<group>"; };
+		0B0000000000000000000015 /* BookmarksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksView.swift; sourceTree = "<group>"; };
+		0B0000000000000000000016 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
+		0B0000000000000000000017 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		0B0000000000000000000018 /* SelfContainedHTML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfContainedHTML.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +77,15 @@
 				0B0000000000000000000005 /* SnapshotStore.swift */,
 				0B0000000000000000000006 /* SnapshotLibraryView.swift */,
 				0B0000000000000000000007 /* SnapshotViewerView.swift */,
+				0B0000000000000000000010 /* Theme.swift */,
+				0B0000000000000000000011 /* BrowserTab.swift */,
+				0B0000000000000000000012 /* TabOverviewView.swift */,
+				0B0000000000000000000013 /* StartPageView.swift */,
+				0B0000000000000000000014 /* BookmarkStore.swift */,
+				0B0000000000000000000015 /* BookmarksView.swift */,
+				0B0000000000000000000016 /* HistoryStore.swift */,
+				0B0000000000000000000017 /* HistoryView.swift */,
+				0B0000000000000000000018 /* SelfContainedHTML.swift */,
 				0B0000000000000000000008 /* Assets.xcassets */,
 				0D0000000000000000000004 /* Preview Content */,
 			);
@@ -158,6 +185,15 @@
 				0C0000000000000000000005 /* SnapshotStore.swift in Sources */,
 				0C0000000000000000000006 /* SnapshotLibraryView.swift in Sources */,
 				0C0000000000000000000007 /* SnapshotViewerView.swift in Sources */,
+				0C0000000000000000000010 /* Theme.swift in Sources */,
+				0C0000000000000000000011 /* BrowserTab.swift in Sources */,
+				0C0000000000000000000012 /* TabOverviewView.swift in Sources */,
+				0C0000000000000000000013 /* StartPageView.swift in Sources */,
+				0C0000000000000000000014 /* BookmarkStore.swift in Sources */,
+				0C0000000000000000000015 /* BookmarksView.swift in Sources */,
+				0C0000000000000000000016 /* HistoryStore.swift in Sources */,
+				0C0000000000000000000017 /* HistoryView.swift in Sources */,
+				0C0000000000000000000018 /* SelfContainedHTML.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,7 +228,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -203,7 +239,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = jp.anko.snapbrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -217,7 +253,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -228,7 +264,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = jp.anko.snapbrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
