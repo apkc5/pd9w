@@ -8,3 +8,5 @@ struct SnapBrowserApp: App {
         }
     }
 }
+
+// build trigger: run 1 was cancelled before any step executed; re-run via push.
