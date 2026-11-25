@@ -133,11 +133,12 @@ final class BrowserModel: ObservableObject {
             }
 
             // 2) Web archive (.webarchive, iOS 14+).
-            // The SDK's completion handler is Result-based, so the async
-            // variant exists and is the correct call (verified via CI typecheck).
+            // NOTE: this API has NO async variant in the SDK (only the
+            // Result-based completion handler) — bridged manually below.
+            // Verified via CI typecheck (runs 10/11).
             var archiveData: Data?
             do {
-                archiveData = try await webView.createWebArchiveData()
+                archiveData = try await Self.createWebArchiveData(from: webView)
             } catch {
                 failures.append("アーカイブ: \(error.localizedDescription)")
             }
@@ -244,9 +245,22 @@ final class BrowserModel: ObservableObject {
         return try await Self.takeSnapshot(of: webView, configuration: config)
     }
 
-    // MARK: - WebKit completion-handler bridge
-    // takeSnapshot's handler is the (UIImage?, Error?) form; wrap it
-    // explicitly instead of relying on an importer-generated async variant.
+    // MARK: - WebKit completion-handler bridges
+    // Neither of these APIs gets an importer-generated async variant in the
+    // current SDK, so wrap the completion handlers explicitly.
+
+    private static func createWebArchiveData(from webView: WKWebView) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            webView.createWebArchiveData { result in
+                switch result {
+                case .success(let data):
+                    continuation.resume(returning: data)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
 
     private static func takeSnapshot(of webView: WKWebView,
                                      configuration: WKSnapshotConfiguration) async throws -> UIImage {
