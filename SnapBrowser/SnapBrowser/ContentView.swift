@@ -1,1 +1,144 @@
-aW1wb3J0IFN3aWZ0VUkKCnN0cnVjdCBDb250ZW50VmlldzogVmlldyB7CiAgICBAU3RhdGVPYmplY3QgcHJpdmF0ZSB2YXIgYnJvd3NlciA9IEJyb3dzZXJNb2RlbCgpCiAgICBAU3RhdGVPYmplY3QgcHJpdmF0ZSB2YXIgc3RvcmUgPSBTbmFwc2hvdFN0b3JlKCkKICAgIEBTdGF0ZSBwcml2YXRlIHZhciBzaG93aW5nTGlicmFyeSA9IGZhbHNlCgogICAgdmFyIGJvZHk6IHNvbWUgVmlldyB7CiAgICAgICAgVlN0YWNrKHNwYWNpbmc6IDApIHsKICAgICAgICAgICAgYWRkcmVzc0JhcgogICAgICAgICAgICBpZiBicm93c2VyLmlzTG9hZGluZyB7CiAgICAgICAgICAgICAgICBQcm9ncmVzc1ZpZXcodmFsdWU6IGJyb3dzZXIuZXN0aW1hdGVkUHJvZ3Jlc3MpCiAgICAgICAgICAgICAgICAgICAgLnByb2dyZXNzVmlld1N0eWxlKC5saW5lYXIpCiAgICAgICAgICAgIH0KICAgICAgICAgICAgV2ViVmlldyh3ZWJWaWV3OiBicm93c2VyLndlYlZpZXcpCiAgICAgICAgICAgICAgICAuaWdub3Jlc1NhZmVBcmVhKGVkZ2VzOiAuYm90dG9tKQogICAgICAgICAgICB0b29sYmFyCiAgICAgICAgfQogICAgICAgIC5zaGVldChpc1ByZXNlbnRlZDogJHNob3dpbmdMaWJyYXJ5KSB7CiAgICAgICAgICAgIE5hdmlnYXRpb25TdGFjayB7CiAgICAgICAgICAgICAgICBTbmFwc2hvdExpYnJhcnlWaWV3KHN0b3JlOiBzdG9yZSkgeyB1cmwgaW4KICAgICAgICAgICAgICAgICAgICBpZiBsZXQgdXJsID0gVVJMKHN0cmluZzogdXJsKSB7CiAgICAgICAgICAgICAgICAgICAgICAgIGJyb3dzZXIubG9hZCh1cmwpCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIHNob3dpbmdMaWJyYXJ5ID0gZmFsc2UKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICAuYWxlcnQoIuOCueODiuODg+ODl+e1kOaenCIsIGlzUHJlc2VudGVkOiBzbmFwQWxlcnRCaW5kaW5nKSB7CiAgICAgICAgICAgIEJ1dHRvbigiT0siLCByb2xlOiAuY2FuY2VsKSB7IGJyb3dzZXIubGFzdFNuYXBSZXN1bHQgPSBuaWwgfQogICAgICAgIH0gbWVzc2FnZTogewogICAgICAgICAgICBpZiBsZXQgcmVzdWx0ID0gYnJvd3Nlci5sYXN0U25hcFJlc3VsdCB7CiAgICAgICAgICAgICAgICBUZXh0KHNuYXBNZXNzYWdlKHJlc3VsdCkpCiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICB9CgogICAgLy8gTUFSSzogLSBQaWVjZXMKCiAgICBwcml2YXRlIHZhciBhZGRyZXNzQmFyOiBzb21lIFZpZXcgewogICAgICAgIEhTdGFjayhzcGFjaW5nOiA4KSB7CiAgICAgICAgICAgIEltYWdlKHN5c3RlbU5hbWU6ICJsb2NrLmZpbGwiKQogICAgICAgICAgICAgICAgLmZvbnQoLmNhcHRpb24pCiAgICAgICAgICAgICAgICAuZm9yZWdyb3VuZFN0eWxlKC5zZWNvbmRhcnkpCiAgICAgICAgICAgIFRleHRGaWVsZCgiVVJM44G+44Gf44Gv5qSc57SiIiwgdGV4dDogJGJyb3dzZXIuYWRkcmVzc1RleHQpCiAgICAgICAgICAgICAgICAudGV4dElucHV0QXV0b2NhcGl0YWxpemF0aW9uKC5uZXZlcikKICAgICAgICAgICAgICAgIC5hdXRvY29ycmVjdGlvbkRpc2FibGVkKCkKICAgICAgICAgICAgICAgIC5rZXlib2FyZFR5cGUoLlVSTCkKICAgICAgICAgICAgICAgIC5zdWJtaXRMYWJlbCguZ28pCiAgICAgICAgICAgICAgICAub25TdWJtaXQgeyBicm93c2VyLmxvYWRBZGRyZXNzQmFyKCkgfQogICAgICAgICAgICBpZiBicm93c2VyLmlzTG9hZGluZyB7CiAgICAgICAgICAgICAgICBCdXR0b24gewogICAgICAgICAgICAgICAgICAgIGJyb3dzZXIud2ViVmlldy5zdG9wTG9hZGluZygpCiAgICAgICAgICAgICAgICB9IGxhYmVsOiB7CiAgICAgICAgICAgICAgICAgICAgSW1hZ2Uoc3lzdGVtTmFtZTogInhtYXJrIikKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgICAgIEJ1dHRvbiB7CiAgICAgICAgICAgICAgICAgICAgYnJvd3Nlci5yZWxvYWQoKQogICAgICAgICAgICAgICAgfSBsYWJlbDogewogICAgICAgICAgICAgICAgICAgIEltYWdlKHN5c3RlbU5hbWU6ICJhcnJvdy5jbG9ja3dpc2UiKQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CiAgICAgICAgfQogICAgICAgIC5wYWRkaW5nKC5ob3Jpem9udGFsLCAxMikKICAgICAgICAucGFkZGluZygudmVydGljYWwsIDgpCiAgICAgICAgLmJhY2tncm91bmQoLnVsdHJhVGhpbk1hdGVyaWFsKQogICAgfQoKICAgIHByaXZhdGUgdmFyIHRvb2xiYXI6IHNvbWUgVmlldyB7CiAgICAgICAgSFN0YWNrIHsKICAgICAgICAgICAgQnV0dG9uIHsgYnJvd3Nlci5nb0JhY2soKSB9IGxhYmVsOiB7CiAgICAgICAgICAgICAgICBJbWFnZShzeXN0ZW1OYW1lOiAiY2hldnJvbi5iYWNrd2FyZCIpCiAgICAgICAgICAgIH0KICAgICAgICAgICAgLmRpc2FibGVkKCFicm93c2VyLmNhbkdvQmFjaykKCiAgICAgICAgICAgIFNwYWNlcigpCgogICAgICAgICAgICBCdXR0b24geyBicm93c2VyLmdvRm9yd2FyZCgpIH0gbGFiZWw6IHsKICAgICAgICAgICAgICAgIEltYWdlKHN5c3RlbU5hbWU6ICJjaGV2cm9uLmZvcndhcmQiKQogICAgICAgICAgICB9CiAgICAgICAgICAgIC5kaXNhYmxlZCghYnJvd3Nlci5jYW5Hb0ZvcndhcmQpCgogICAgICAgICAgICBTcGFjZXIoKQoKICAgICAgICAgICAgLy8gU05BUCDigJQgdGhlIGhlYWRsaW5lIGFjdGlvbi4gU2h1dHRlci1yZWQgYWNjZW50LCBhcyBvbiBBbmRyb2lkLgogICAgICAgICAgICBCdXR0b24gewogICAgICAgICAgICAgICAgYnJvd3Nlci5zbmFwKHN0b3JlOiBzdG9yZSkKICAgICAgICAgICAgfSBsYWJlbDogewogICAgICAgICAgICAgICAgVlN0YWNrKHNwYWNpbmc6IDIpIHsKICAgICAgICAgICAgICAgICAgICBJbWFnZShzeXN0ZW1OYW1lOiAiY2FtZXJhLmFwZXJ0dXJlIikKICAgICAgICAgICAgICAgICAgICAgICAgLmZvbnQoLnRpdGxlMykKICAgICAgICAgICAgICAgICAgICBUZXh0KCJTTkFQIikKICAgICAgICAgICAgICAgICAgICAgICAgLmZvbnQoLmNhcHRpb24yLmJvbGQoKSkKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIC5mb3JlZ3JvdW5kU3R5bGUoQ29sb3IocmVkOiAxLjAsIGdyZWVuOiAwLjMwLCBibHVlOiAwLjE4KSkKICAgICAgICAgICAgfQogICAgICAgICAgICAuZGlzYWJsZWQoYnJvd3Nlci5pc1NuYXBwaW5nKQoKICAgICAgICAgICAgU3BhY2VyKCkKCiAgICAgICAgICAgIEJ1dHRvbiB7IHNob3dpbmdMaWJyYXJ5ID0gdHJ1ZSB9IGxhYmVsOiB7CiAgICAgICAgICAgICAgICBJbWFnZShzeXN0ZW1OYW1lOiAiYm9va3MudmVydGljYWwiKQogICAgICAgICAgICB9CgogICAgICAgICAgICBTcGFjZXIoKQoKICAgICAgICAgICAgQnV0dG9uIHsgYnJvd3Nlci5yZWxvYWQoKSB9IGxhYmVsOiB7CiAgICAgICAgICAgICAgICBJbWFnZShzeXN0ZW1OYW1lOiAiYXJyb3cuY2xvY2t3aXNlIikKICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICAucGFkZGluZyguaG9yaXpvbnRhbCwgMjApCiAgICAgICAgLnBhZGRpbmcoLnZlcnRpY2FsLCA4KQogICAgICAgIC5iYWNrZ3JvdW5kKC51bHRyYVRoaW5NYXRlcmlhbCkKICAgICAgICAub3ZlcmxheShhbGlnbm1lbnQ6IC50b3ApIHsgRGl2aWRlcigpIH0KICAgIH0KCiAgICAvLyBNQVJLOiAtIFNuYXAgcmVzdWx0CgogICAgcHJpdmF0ZSB2YXIgc25hcEFsZXJ0QmluZGluZzogQmluZGluZzxCb29sPiB7CiAgICAgICAgQmluZGluZygKICAgICAgICAgICAgZ2V0OiB7IGJyb3dzZXIubGFzdFNuYXBSZXN1bHQgIT0gbmlsIH0sCiAgICAgICAgICAgIHNldDogeyBpZiAhJDAgeyBicm93c2VyLmxhc3RTbmFwUmVzdWx0ID0gbmlsIH0gfQogICAgICAgICkKICAgIH0KCiAgICBwcml2YXRlIGZ1bmMgc25hcE1lc3NhZ2UoXyByZXN1bHQ6IEJyb3dzZXJNb2RlbC5TbmFwUmVzdWx0KSAtPiBTdHJpbmcgewogICAgICAgIGZ1bmMgZm10KF8gYnl0ZXM6IEludD8pIC0+IFN0cmluZyB7CiAgICAgICAgICAgIGd1YXJkIGxldCBieXRlcyBlbHNlIHsgcmV0dXJuICLlpLHmlZciIH0KICAgICAgICAgICAgcmV0dXJuIEJ5dGVDb3VudEZvcm1hdHRlci5zdHJpbmcoZnJvbUJ5dGVDb3VudDogSW50NjQoYnl0ZXMpLCBjb3VudFN0eWxlOiAuZmlsZSkKICAgICAgICB9CiAgICAgICAgdmFyIGxpbmVzID0gWwogICAgICAgICAgICAi55S75YOPOiBcKGZtdChyZXN1bHQuaW1hZ2VCeXRlcykpIiwKICAgICAgICAgICAgIuOCouODvOOCq+OCpOODligud2ViYXJjaGl2ZSk6IFwoZm10KHJlc3VsdC5hcmNoaXZlQnl0ZXMpKSIsCiAgICAgICAgICAgICJIVE1MOiBcKGZtdChyZXN1bHQuaHRtbEJ5dGVzKSkiLAogICAgICAgICAgICAi44OG44Kt44K544OIOiBcKHJlc3VsdC50ZXh0Q2hhcnMubWFwIHsgIlwoJDAp5paH5a2XIiB9ID8/ICLlpLHmlZciKSIKICAgICAgICBdCiAgICAgICAgaWYgIXJlc3VsdC5mYWlsdXJlcy5pc0VtcHR5IHsKICAgICAgICAgICAgbGluZXMuYXBwZW5kKCLigJQiKQogICAgICAgICAgICBsaW5lcy5hcHBlbmQoY29udGVudHNPZjogcmVzdWx0LmZhaWx1cmVzKQogICAgICAgIH0KICAgICAgICByZXR1cm4gbGluZXMuam9pbmVkKHNlcGFyYXRvcjogIlxuIikKICAgIH0KfQo=
+import SwiftUI
+
+struct ContentView: View {
+    @StateObject private var browser = BrowserModel()
+    @StateObject private var store = SnapshotStore()
+    @State private var showingLibrary = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            addressBar
+            if browser.isLoading {
+                ProgressView(value: browser.estimatedProgress)
+                    .progressViewStyle(.linear)
+            }
+            WebView(webView: browser.webView)
+                .ignoresSafeArea(edges: .bottom)
+            toolbar
+        }
+        .sheet(isPresented: $showingLibrary) {
+            NavigationStack {
+                SnapshotLibraryView(store: store) { url in
+                    if let url = URL(string: url) {
+                        browser.load(url)
+                    }
+                    showingLibrary = false
+                }
+            }
+        }
+        .alert("スナップ結果", isPresented: snapAlertBinding) {
+            Button("OK", role: .cancel) { browser.lastSnapResult = nil }
+        } message: {
+            if let result = browser.lastSnapResult {
+                Text(snapMessage(result))
+            }
+        }
+    }
+
+    // MARK: - Pieces
+
+    private var addressBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("URLまたは検索", text: $browser.addressText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .submitLabel(.go)
+                .onSubmit { browser.loadAddressBar() }
+            if browser.isLoading {
+                Button {
+                    browser.webView.stopLoading()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+            } else {
+                Button {
+                    browser.reload()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
+
+    private var toolbar: some View {
+        HStack {
+            Button { browser.goBack() } label: {
+                Image(systemName: "chevron.backward")
+            }
+            .disabled(!browser.canGoBack)
+
+            Spacer()
+
+            Button { browser.goForward() } label: {
+                Image(systemName: "chevron.forward")
+            }
+            .disabled(!browser.canGoForward)
+
+            Spacer()
+
+            // SNAP — the headline action. Shutter-red accent, as on Android.
+            Button {
+                browser.snap(store: store)
+            } label: {
+                VStack(spacing: 2) {
+                    Image(systemName: "camera.aperture")
+                        .font(.title3)
+                    Text("SNAP")
+                        .font(.caption2.bold())
+                }
+                .foregroundStyle(Color(red: 1.0, green: 0.30, blue: 0.18))
+            }
+            .disabled(browser.isSnapping)
+
+            Spacer()
+
+            Button { showingLibrary = true } label: {
+                Image(systemName: "books.vertical")
+            }
+
+            Spacer()
+
+            Button { browser.reload() } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    // MARK: - Snap result
+
+    private var snapAlertBinding: Binding<Bool> {
+        Binding(
+            get: { browser.lastSnapResult != nil },
+            set: { if !$0 { browser.lastSnapResult = nil } }
+        )
+    }
+
+    private func snapMessage(_ result: BrowserModel.SnapResult) -> String {
+        func fmt(_ bytes: Int?) -> String {
+            guard let bytes else { return "失敗" }
+            return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        }
+        var lines = [
+            "画像: \(fmt(result.imageBytes))",
+            "アーカイブ(.webarchive): \(fmt(result.archiveBytes))",
+            "HTML: \(fmt(result.htmlBytes))",
+            "テキスト: \(result.textChars.map { "\($0)文字" } ?? "失敗")"
+        ]
+        if !result.failures.isEmpty {
+            lines.append("—")
+            lines.append(contentsOf: result.failures)
+        }
+        return lines.joined(separator: "\n")
+    }
+}
