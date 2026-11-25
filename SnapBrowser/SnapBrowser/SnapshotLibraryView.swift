@@ -14,8 +14,8 @@ struct SnapshotLibraryView: View {
                                        description: Text("ページを開いて SNAP を押すと、ここに日付順で並びます。"))
             } else {
                 List {
-                    ForEach(groupedDays, id: \.day) { group in
-                        Section(group.day) {
+                    ForEach(groupedDays) { group in
+                        Section {
                             ForEach(group.items) { item in
                                 NavigationLink {
                                     SnapshotViewerView(store: store, item: item,
@@ -29,6 +29,8 @@ struct SnapshotLibraryView: View {
                                     store.delete(group.items[index])
                                 }
                             }
+                        } header: {
+                            Text(group.day)
                         }
                     }
                 }
@@ -43,10 +45,16 @@ struct SnapshotLibraryView: View {
         .onAppear { store.reload() }
     }
 
-    private var groupedDays: [(day: String, items: [SnapshotItem])] {
+    private struct DayGroup: Identifiable {
+        let day: String
+        let items: [SnapshotItem]
+        var id: String { day }
+    }
+
+    private var groupedDays: [DayGroup] {
         let groups = Dictionary(grouping: store.items, by: { store.dayKey(for: $0) })
         return groups.keys.sorted(by: >).map { day in
-            (day: day, items: groups[day]!.sorted { $0.createdAt > $1.createdAt })
+            DayGroup(day: day, items: groups[day]!.sorted { $0.createdAt > $1.createdAt })
         }
     }
 }
