@@ -1,0 +1,86 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "SnapBrowser/**"
+      - ".github/workflows/build-ipa.yml"
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Select newest installed Xcode
+        run: |
+          ls -d /Applications/Xcode_*.app
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Restore icon
+        run: |
+          base64 -D -i SnapBrowser/icon.b64 -o "SnapBrowser/SnapBrowser/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
+          ls -la "SnapBrowser/SnapBrowser/Assets.xcassets/AppIcon.appiconset/"
+
+      - name: Build (signing disabled)
+        working-directory: SnapBrowser
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project SnapBrowser.xcodeproj \
+            -scheme SnapBrowser \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$GITHUB_WORKSPACE/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find "$GITHUB_WORKSPACE/build" -type d -name 'SnapBrowser.app' -path '*Release-iphoneos*' | head -1)"
+          echo "App: $APP_PATH"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          rm -rf Payload SnapBrowser-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          rm -rf "Payload/SnapBrowser.app/_CodeSignature"
+          zip -qry SnapBrowser-unsigned.ipa Payload
+          ls -lh SnapBrowser-unsigned.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-ipa
+          path: SnapBrowser-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach IPA to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="b${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" SnapBrowser-unsigned.ipa --title "$TAG" --notes "build $GITHUB_RUN_NUMBER" \
+            || gh release upload "$TAG" SnapBrowser-unsigned.ipa --clobber
+
+      - name: Report failure log
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo "run: ${GITHUB_RUN_NUMBER} (${GITHUB_RUN_ID})"; echo; echo '```'; tail -n 250 "$GITHUB_WORKSPACE/build.log" 2>/dev/null || echo "(no build.log)"; echo '```'; } > issue-body.md
+          gh issue create --title "build failed: run ${GITHUB_RUN_NUMBER}" --body-file issue-body.md || true
