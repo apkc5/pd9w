@@ -1,1 +1,244 @@
-aW1wb3J0IEZvdW5kYXRpb24KaW1wb3J0IFdlYktpdAppbXBvcnQgVUlLaXQKCi8vLyBPd25zIHRoZSBzaW5nbGUgV0tXZWJWaWV3IGZvciB0aGUgYnJvd3NlciB0YWIgYW5kIGFsbCBTTkFQIGNhcHR1cmUgbG9naWMuCi8vLwovLy8gUGVyc2lzdGVuY2UgcnVsZSBmb3IgdGhpcyBhcHA6IGZpbGVzICsgVXNlckRlZmF1bHRzIG9ubHkuCi8vLyBObyBLZXljaGFpbiBhbnl3aGVyZSAoQWx0U3RvcmUgcmUtc2lnbmluZyBicmVha3MgS2V5Y2hhaW4gYWNjZXNzIOKAlAovLy8gdGhhdCBpcyB3aGF0IGtlcHQgbG9nZ2luZyB0aGUgdXNlciBvdXQgb2YgYW5vdGhlciBzaWRlbG9hZGVkIGFwcCkuCkBNYWluQWN0b3IKZmluYWwgY2xhc3MgQnJvd3Nlck1vZGVsOiBPYnNlcnZhYmxlT2JqZWN0IHsKICAgIGxldCB3ZWJWaWV3OiBXS1dlYlZpZXcKCiAgICBAUHVibGlzaGVkIHZhciBhZGRyZXNzVGV4dDogU3RyaW5nID0gIiIKICAgIEBQdWJsaXNoZWQgdmFyIHBhZ2VUaXRsZTogU3RyaW5nID0gIiIKICAgIEBQdWJsaXNoZWQgdmFyIGNhbkdvQmFjazogQm9vbCA9IGZhbHNlCiAgICBAUHVibGlzaGVkIHZhciBjYW5Hb0ZvcndhcmQ6IEJvb2wgPSBmYWxzZQogICAgQFB1Ymxpc2hlZCB2YXIgaXNMb2FkaW5nOiBCb29sID0gZmFsc2UKICAgIEBQdWJsaXNoZWQgdmFyIGVzdGltYXRlZFByb2dyZXNzOiBEb3VibGUgPSAwCgogICAgQFB1Ymxpc2hlZCB2YXIgaXNTbmFwcGluZzogQm9vbCA9IGZhbHNlCiAgICBAUHVibGlzaGVkIHZhciBsYXN0U25hcFJlc3VsdDogU25hcFJlc3VsdD8KCiAgICBwcml2YXRlIHZhciBvYnNlcnZhdGlvbnM6IFtOU0tleVZhbHVlT2JzZXJ2YXRpb25dID0gW10KCiAgICBzdGF0aWMgbGV0IGhvbWVVUkwgPSBVUkwoc3RyaW5nOiAiaHR0cHM6Ly9leGFtcGxlLmNvbSIpIQogICAgcHJpdmF0ZSBzdGF0aWMgbGV0IGxhc3RVUkxLZXkgPSAibGFzdFVSTCIKCiAgICBpbml0KCkgewogICAgICAgIGxldCBjb25maWcgPSBXS1dlYlZpZXdDb25maWd1cmF0aW9uKCkKICAgICAgICBjb25maWcud2Vic2l0ZURhdGFTdG9yZSA9IC5kZWZhdWx0KCkKICAgICAgICAvLyBpT1MgZXF1aXZhbGVudCBvZiBBbmRyb2lkJ3MgImRlc2t0b3Agc2l0ZSIgcGx1bWJpbmcgaXMgbGVmdCBvdXQgb2YgdjAuMS4KICAgICAgICB3ZWJWaWV3ID0gV0tXZWJWaWV3KGZyYW1lOiAuemVybywgY29uZmlndXJhdGlvbjogY29uZmlnKQogICAgICAgIHdlYlZpZXcuYWxsb3dzQmFja0ZvcndhcmROYXZpZ2F0aW9uR2VzdHVyZXMgPSB0cnVlCgogICAgICAgIG9ic2VydmF0aW9ucy5hcHBlbmQod2ViVmlldy5vYnNlcnZlKFwuY2FuR29CYWNrLCBvcHRpb25zOiBbLm5ld10pIHsgW3dlYWsgc2VsZl0gd3YsIF8gaW4KICAgICAgICAgICAgVGFzayB7IEBNYWluQWN0b3IgaW4gc2VsZj8uY2FuR29CYWNrID0gd3YuY2FuR29CYWNrIH0KICAgICAgICB9KQogICAgICAgIG9ic2VydmF0aW9ucy5hcHBlbmQod2ViVmlldy5vYnNlcnZlKFwuY2FuR29Gb3J3YXJkLCBvcHRpb25zOiBbLm5ld10pIHsgW3dlYWsgc2VsZl0gd3YsIF8gaW4KICAgICAgICAgICAgVGFzayB7IEBNYWluQWN0b3IgaW4gc2VsZj8uY2FuR29Gb3J3YXJkID0gd3YuY2FuR29Gb3J3YXJkIH0KICAgICAgICB9KQogICAgICAgIG9ic2VydmF0aW9ucy5hcHBlbmQod2ViVmlldy5vYnNlcnZlKFwuaXNMb2FkaW5nLCBvcHRpb25zOiBbLm5ld10pIHsgW3dlYWsgc2VsZl0gd3YsIF8gaW4KICAgICAgICAgICAgVGFzayB7IEBNYWluQWN0b3IgaW4gc2VsZj8uaXNMb2FkaW5nID0gd3YuaXNMb2FkaW5nIH0KICAgICAgICB9KQogICAgICAgIG9ic2VydmF0aW9ucy5hcHBlbmQod2ViVmlldy5vYnNlcnZlKFwuZXN0aW1hdGVkUHJvZ3Jlc3MsIG9wdGlvbnM6IFsubmV3XSkgeyBbd2VhayBzZWxmXSB3diwgXyBpbgogICAgICAgICAgICBUYXNrIHsgQE1haW5BY3RvciBpbiBzZWxmPy5lc3RpbWF0ZWRQcm9ncmVzcyA9IHd2LmVzdGltYXRlZFByb2dyZXNzIH0KICAgICAgICB9KQogICAgICAgIG9ic2VydmF0aW9ucy5hcHBlbmQod2ViVmlldy5vYnNlcnZlKFwudGl0bGUsIG9wdGlvbnM6IFsubmV3XSkgeyBbd2VhayBzZWxmXSB3diwgXyBpbgogICAgICAgICAgICBUYXNrIHsgQE1haW5BY3RvciBpbiBzZWxmPy5wYWdlVGl0bGUgPSB3di50aXRsZSA/PyAiIiB9CiAgICAgICAgfSkKICAgICAgICBvYnNlcnZhdGlvbnMuYXBwZW5kKHdlYlZpZXcub2JzZXJ2ZShcLnVybCwgb3B0aW9uczogWy5uZXddKSB7IFt3ZWFrIHNlbGZdIHd2LCBfIGluCiAgICAgICAgICAgIFRhc2sgeyBATWFpbkFjdG9yIGluCiAgICAgICAgICAgICAgICBndWFyZCBsZXQgc2VsZiBlbHNlIHsgcmV0dXJuIH0KICAgICAgICAgICAgICAgIGlmIGxldCB1cmwgPSB3di51cmwgewogICAgICAgICAgICAgICAgICAgIHNlbGYuYWRkcmVzc1RleHQgPSB1cmwuYWJzb2x1dGVTdHJpbmcKICAgICAgICAgICAgICAgICAgICBVc2VyRGVmYXVsdHMuc3RhbmRhcmQuc2V0KHVybC5hYnNvbHV0ZVN0cmluZywgZm9yS2V5OiBTZWxmLmxhc3RVUkxLZXkpCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KICAgICAgICB9KQoKICAgICAgICBsZXQgc3RhcnQgPSBVc2VyRGVmYXVsdHMuc3RhbmRhcmQuc3RyaW5nKGZvcktleTogU2VsZi5sYXN0VVJMS2V5KQogICAgICAgICAgICAuZmxhdE1hcChVUkwuaW5pdChzdHJpbmc6KSkgPz8gU2VsZi5ob21lVVJMCiAgICAgICAgbG9hZChzdGFydCkKICAgIH0KCiAgICAvLyBNQVJLOiAtIE5hdmlnYXRpb24KCiAgICBmdW5jIGxvYWRBZGRyZXNzQmFyKCkgewogICAgICAgIGxldCB0ZXh0ID0gYWRkcmVzc1RleHQudHJpbW1pbmdDaGFyYWN0ZXJzKGluOiAud2hpdGVzcGFjZXNBbmROZXdsaW5lcykKICAgICAgICBndWFyZCAhdGV4dC5pc0VtcHR5IGVsc2UgeyByZXR1cm4gfQogICAgICAgIGlmIGxldCB1cmwgPSBTZWxmLnVybEZyb21BZGRyZXNzVGV4dCh0ZXh0KSB7CiAgICAgICAgICAgIGxvYWQodXJsKQogICAgICAgIH0KICAgIH0KCiAgICBmdW5jIGxvYWQoXyB1cmw6IFVSTCkgewogICAgICAgIHdlYlZpZXcubG9hZChVUkxSZXF1ZXN0KHVybDogdXJsKSkKICAgIH0KCiAgICBmdW5jIGdvQmFjaygpIHsgd2ViVmlldy5nb0JhY2soKSB9CiAgICBmdW5jIGdvRm9yd2FyZCgpIHsgd2ViVmlldy5nb0ZvcndhcmQoKSB9CiAgICBmdW5jIHJlbG9hZCgpIHsgd2ViVmlldy5yZWxvYWQoKSB9CgogICAgLy8vIEFjY2VwdHMgZnVsbCBVUkxzLCBiYXJlIGRvbWFpbnMsIGFuZCBwbGFpbiBzZWFyY2ggdGVybXMgKEJyYXZlIFNlYXJjaCwKICAgIC8vLyBtYXRjaGluZyB0aGUgQW5kcm9pZCB2ZXJzaW9uJ3MgZGVmYXVsdCBlbmdpbmUpLgogICAgc3RhdGljIGZ1bmMgdXJsRnJvbUFkZHJlc3NUZXh0KF8gdGV4dDogU3RyaW5nKSAtPiBVUkw/IHsKICAgICAgICBpZiBsZXQgdXJsID0gVVJMKHN0cmluZzogdGV4dCksIHVybC5zY2hlbWUgPT0gImh0dHAiIHx8IHVybC5zY2hlbWUgPT0gImh0dHBzIiB7CiAgICAgICAgICAgIHJldHVybiB1cmwKICAgICAgICB9CiAgICAgICAgbGV0IGxvb2tzTGlrZURvbWFpbiA9IHRleHQuY29udGFpbnMoIi4iKSAmJiAhdGV4dC5jb250YWlucygiICIpCiAgICAgICAgaWYgbG9va3NMaWtlRG9tYWluLCBsZXQgdXJsID0gVVJMKHN0cmluZzogImh0dHBzOi8vIiArIHRleHQpIHsKICAgICAgICAgICAgcmV0dXJuIHVybAogICAgICAgIH0KICAgICAgICB2YXIgY29tcG9uZW50cyA9IFVSTENvbXBvbmVudHMoc3RyaW5nOiAiaHR0cHM6Ly9zZWFyY2guYnJhdmUuY29tL3NlYXJjaCIpCiAgICAgICAgY29tcG9uZW50cz8ucXVlcnlJdGVtcyA9IFtVUkxRdWVyeUl0ZW0obmFtZTogInEiLCB2YWx1ZTogdGV4dCldCiAgICAgICAgcmV0dXJuIGNvbXBvbmVudHM/LnVybAogICAgfQoKICAgIC8vIE1BUks6IC0gU05BUAoKICAgIHN0cnVjdCBTbmFwUmVzdWx0IHsKICAgICAgICB2YXIgdGl0bGU6IFN0cmluZwogICAgICAgIHZhciB1cmw6IFN0cmluZwogICAgICAgIHZhciBpbWFnZUJ5dGVzOiBJbnQ/CiAgICAgICAgdmFyIGFyY2hpdmVCeXRlczogSW50PwogICAgICAgIHZhciB0ZXh0Q2hhcnM6IEludD8KICAgICAgICB2YXIgaHRtbEJ5dGVzOiBJbnQ/CiAgICAgICAgdmFyIGZhaWx1cmVzOiBbU3RyaW5nXQogICAgfQoKICAgIC8vLyBPbmUtdGFwIHNuYXBzaG90LCBtaXJyb3JpbmcgdGhlIEFuZHJvaWQgMy1waWVjZSBzZXQ6CiAgICAvLy8gZnVsbC1wYWdlIFBORyArIC53ZWJhcmNoaXZlIChpT1MncyBhcmNoaXZlIGZvcm1hdCkgKyBib2R5IHRleHQsCiAgICAvLy8gcGx1cyB0aGUgcmF3IEhUTUwgc291cmNlICh0aGUgcG9ydGFibGUgcGllY2Ug4oCUIC53ZWJhcmNoaXZlIGlzIEFwcGxlLW9ubHkpLgogICAgLy8vIEEgY29tcG9uZW50IGNvdW50cyBhcyBzYXZlZCBvbmx5IHdoZW4gaXRzIGZpbGUgYWN0dWFsbHkgZXhpc3RzIG9uIGRpc2suCiAgICBmdW5jIHNuYXAoc3RvcmU6IFNuYXBzaG90U3RvcmUpIHsKICAgICAgICBndWFyZCAhaXNTbmFwcGluZyBlbHNlIHsgcmV0dXJuIH0KICAgICAgICBpc1NuYXBwaW5nID0gdHJ1ZQogICAgICAgIGxhc3RTbmFwUmVzdWx0ID0gbmlsCgogICAgICAgIFRhc2sgewogICAgICAgICAgICB2YXIgZmFpbHVyZXM6IFtTdHJpbmddID0gW10KICAgICAgICAgICAgbGV0IHNvdXJjZVVSTCA9IHdlYlZpZXcudXJsID8/IFNlbGYuaG9tZVVSTAogICAgICAgICAgICBsZXQgdGl0bGUgPSB3ZWJWaWV3LnRpdGxlID8/IHNvdXJjZVVSTC5ob3N0ID8/ICLjg5rjg7zjgrgiCgogICAgICAgICAgICAvLyAxKSBGdWxsLXBhZ2UgaW1hZ2UgKGZyYW1lLXJlc2l6ZSBjYXB0dXJlOyBmYWxscyBiYWNrIHRvIHZpZXdwb3J0KS4KICAgICAgICAgICAgdmFyIGltYWdlRGF0YTogRGF0YT8KICAgICAgICAgICAgZG8gewogICAgICAgICAgICAgICAgbGV0IGltYWdlID0gdHJ5IGF3YWl0IGNhcHR1cmVGdWxsUGFnZUltYWdlKCkKICAgICAgICAgICAgICAgIGltYWdlRGF0YSA9IGltYWdlLnBuZ0RhdGEoKQogICAgICAgICAgICAgICAgaWYgaW1hZ2VEYXRhID09IG5pbCB7IGZhaWx1cmVzLmFwcGVuZCgi55S75YOP44GuUE5H5aSJ5o+b44Gr5aSx5pWXIikgfQogICAgICAgICAgICB9IGNhdGNoIHsKICAgICAgICAgICAgICAgIGZhaWx1cmVzLmFwcGVuZCgi55S75YOPOiBcKGVycm9yLmxvY2FsaXplZERlc2NyaXB0aW9uKSIpCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIC8vIDIpIFdlYiBhcmNoaXZlICgud2ViYXJjaGl2ZSwgaU9TIDE0KykuCiAgICAgICAgICAgIHZhciBhcmNoaXZlRGF0YTogRGF0YT8KICAgICAgICAgICAgZG8gewogICAgICAgICAgICAgICAgYXJjaGl2ZURhdGEgPSB0cnkgYXdhaXQgd2ViVmlldy5jcmVhdGVXZWJBcmNoaXZlRGF0YSgpCiAgICAgICAgICAgIH0gY2F0Y2ggewogICAgICAgICAgICAgICAgZmFpbHVyZXMuYXBwZW5kKCLjgqLjg7zjgqvjgqTjg5Y6IFwoZXJyb3IubG9jYWxpemVkRGVzY3JpcHRpb24pIikKICAgICAgICAgICAgfQoKICAgICAgICAgICAgLy8gMykgQm9keSB0ZXh0IHZpYSBKUy4KICAgICAgICAgICAgdmFyIHRleHQ6IFN0cmluZz8KICAgICAgICAgICAgZG8gewogICAgICAgICAgICAgICAgbGV0IHJhdyA9IHRyeSBhd2FpdCB3ZWJWaWV3LmV2YWx1YXRlSmF2YVNjcmlwdCgiZG9jdW1lbnQuYm9keSA/IGRvY3VtZW50LmJvZHkuaW5uZXJUZXh0IDogJyciKQogICAgICAgICAgICAgICAgdGV4dCA9IHJhdyBhcz8gU3RyaW5nCiAgICAgICAgICAgICAgICBpZiB0ZXh0ID09IG5pbCB7IGZhaWx1cmVzLmFwcGVuZCgi44OG44Kt44K544OIOiDlj5blvpfntZDmnpzjgYzmloflrZfliJfjgafjgarjgYQiKSB9CiAgICAgICAgICAgIH0gY2F0Y2ggewogICAgICAgICAgICAgICAgZmFpbHVyZXMuYXBwZW5kKCLjg4bjgq3jgrnjg4g6IFwoZXJyb3IubG9jYWxpemVkRGVzY3JpcHRpb24pIikKICAgICAgICAgICAgfQoKICAgICAgICAgICAgLy8gNCkgUmF3IEhUTUwgdmlhIEpTIChwb3J0YWJsZSBhcmNoaXZlIGNvbXBhbmlvbikuCiAgICAgICAgICAgIHZhciBodG1sRGF0YTogRGF0YT8KICAgICAgICAgICAgZG8gewogICAgICAgICAgICAgICAgbGV0IHJhdyA9IHRyeSBhd2FpdCB3ZWJWaWV3LmV2YWx1YXRlSmF2YVNjcmlwdCgiZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50ID8gZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50Lm91dGVySFRNTCA6ICcnIikKICAgICAgICAgICAgICAgIGlmIGxldCBodG1sID0gcmF3IGFzPyBTdHJpbmcgewogICAgICAgICAgICAgICAgICAgIGh0bWxEYXRhID0gRGF0YShodG1sLnV0ZjgpCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0gY2F0Y2ggewogICAgICAgICAgICAgICAgZmFpbHVyZXMuYXBwZW5kKCJIVE1MOiBcKGVycm9yLmxvY2FsaXplZERlc2NyaXB0aW9uKSIpCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIHZhciByZXN1bHQgPSBTbmFwUmVzdWx0KHRpdGxlOiB0aXRsZSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdXJsOiBzb3VyY2VVUkwuYWJzb2x1dGVTdHJpbmcsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGltYWdlQnl0ZXM6IG5pbCwgYXJjaGl2ZUJ5dGVzOiBuaWwsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRleHRDaGFyczogbmlsLCBodG1sQnl0ZXM6IG5pbCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZmFpbHVyZXM6IGZhaWx1cmVzKQogICAgICAgICAgICBkbyB7CiAgICAgICAgICAgICAgICBsZXQgc2F2ZWQgPSB0cnkgc3RvcmUuc2F2ZSh0aXRsZTogdGl0bGUsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB1cmw6IHNvdXJjZVVSTC5hYnNvbHV0ZVN0cmluZywKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGltYWdlRGF0YTogaW1hZ2VEYXRhLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYXJjaGl2ZURhdGE6IGFyY2hpdmVEYXRhLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGV4dDogdGV4dCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGh0bWxEYXRhOiBodG1sRGF0YSkKICAgICAgICAgICAgICAgIHJlc3VsdC5pbWFnZUJ5dGVzID0gc2F2ZWQuaW1hZ2VCeXRlcwogICAgICAgICAgICAgICAgcmVzdWx0LmFyY2hpdmVCeXRlcyA9IHNhdmVkLmFyY2hpdmVCeXRlcwogICAgICAgICAgICAgICAgcmVzdWx0LnRleHRDaGFycyA9IHNhdmVkLnRleHRDaGFycwogICAgICAgICAgICAgICAgcmVzdWx0Lmh0bWxCeXRlcyA9IHNhdmVkLmh0bWxCeXRlcwogICAgICAgICAgICAgICAgcmVzdWx0LmZhaWx1cmVzLmFwcGVuZChjb250ZW50c09mOiBzYXZlZC5mYWlsdXJlcykKICAgICAgICAgICAgfSBjYXRjaCB7CiAgICAgICAgICAgICAgICByZXN1bHQuZmFpbHVyZXMuYXBwZW5kKCLkv53lrZg6IFwoZXJyb3IubG9jYWxpemVkRGVzY3JpcHRpb24pIikKICAgICAgICAgICAgfQoKICAgICAgICAgICAgbGFzdFNuYXBSZXN1bHQgPSByZXN1bHQKICAgICAgICAgICAgaXNTbmFwcGluZyA9IGZhbHNlCiAgICAgICAgfQogICAgfQoKICAgIC8vLyBGdWxsLXBhZ2UgY2FwdHVyZSBieSB0ZW1wb3JhcmlseSBncm93aW5nIHRoZSB3ZWIgdmlldyB0byB0aGUgcGFnZSdzCiAgICAvLy8gY29udGVudCBoZWlnaHQsIHRoZW4gc25hcHNob3R0aW5nIHRoZSB3aG9sZSBmcmFtZS4KICAgIC8vLwogICAgLy8vIENhdmVhdHMgKGFsc28gaW4gRkVBU0lCSUxJVFkubWQpOiBXS1dlYlZpZXcncyB0YWtlU25hcHNob3Qgb25seSBldmVyCiAgICAvLy8gY2FwdHVyZXMgYSByZWN0IG9mIHRoZSB2aWV3LCBzbyBwYWdlcyB0YWxsZXIgdGhhbiB0aGUgY2FwIGJlbG93IGFyZQogICAgLy8vIGNhcHR1cmVkIGF0IHJlZHVjZWQgZmlkZWxpdHkvZmFpbCBvdmVyIHRvIHRoZSB2aXNpYmxlIHZpZXdwb3J0LgogICAgLy8vIEV4dHJlbWVseSBsb25nIHBhZ2VzIGNhbiBhbHNvIGhpdCBtZW1vcnkgbGltaXRzIHdoaWxlIHRoZSBsYXllciBncm93cy4KICAgIHByaXZhdGUgZnVuYyBjYXB0dXJlRnVsbFBhZ2VJbWFnZSgpIGFzeW5jIHRocm93cyAtPiBVSUltYWdlIHsKICAgICAgICBsZXQgd2ViVmlldyA9IHNlbGYud2ViVmlldwogICAgICAgIGxldCBzY3JvbGxWaWV3ID0gd2ViVmlldy5zY3JvbGxWaWV3CgogICAgICAgIGxldCBjb250ZW50SGVpZ2h0ID0gc2Nyb2xsVmlldy5jb250ZW50U2l6ZS5oZWlnaHQKICAgICAgICBsZXQgdmlld3BvcnRIZWlnaHQgPSB3ZWJWaWV3LmJvdW5kcy5oZWlnaHQKICAgICAgICBsZXQgbWF4SGVpZ2h0OiBDR0Zsb2F0ID0gMTZfMDAwCgogICAgICAgIGd1YXJkIGNvbnRlbnRIZWlnaHQgPiB2aWV3cG9ydEhlaWdodCArIDEsIGNvbnRlbnRIZWlnaHQgPD0gbWF4SGVpZ2h0IGVsc2UgewogICAgICAgICAgICAvLyBTaG9ydCBwYWdlIChvciBhYnN1cmRseSBsb25nKTogdmlzaWJsZS1hcmVhIHNuYXBzaG90IGlzIHRoZSBob25lc3QgcmVzdWx0LgogICAgICAgICAgICByZXR1cm4gdHJ5IGF3YWl0IHNuYXBzaG90Q3VycmVudFZpZXcoKQogICAgICAgIH0KCiAgICAgICAgbGV0IG9yaWdpbmFsRnJhbWUgPSB3ZWJWaWV3LmZyYW1lCiAgICAgICAgbGV0IG9yaWdpbmFsT2Zmc2V0ID0gc2Nyb2xsVmlldy5jb250ZW50T2Zmc2V0CiAgICAgICAgbGV0IG9yaWdpbmFsU3VwZXJ2aWV3ID0gd2ViVmlldy5zdXBlcnZpZXcKCiAgICAgICAgLy8gRGV0YWNoIGludG8gYSBmdWxsLWhlaWdodCBmcmFtZSBvZmZzY3JlZW4sIGxldCBpdCBsYXkgb3V0LCBzbmFwc2hvdCwgcmVzdG9yZS4KICAgICAgICB3ZWJWaWV3LmZyYW1lID0gQ0dSZWN0KHg6IDAsIHk6IDAsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB3aWR0aDogb3JpZ2luYWxGcmFtZS53aWR0aCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGhlaWdodDogY29udGVudEhlaWdodCkKICAgICAgICBzY3JvbGxWaWV3LmNvbnRlbnRPZmZzZXQgPSAuemVybwogICAgICAgIHdlYlZpZXcuc2V0TmVlZHNMYXlvdXQoKQogICAgICAgIHdlYlZpZXcubGF5b3V0SWZOZWVkZWQoKQogICAgICAgIHRyeSBhd2FpdCBUYXNrLnNsZWVwKG5hbm9zZWNvbmRzOiAzNTBfMDAwXzAwMCkKCiAgICAgICAgZG8gewogICAgICAgICAgICBsZXQgY29uZmlnID0gV0tTbmFwc2hvdENvbmZpZ3VyYXRpb24oKQogICAgICAgICAgICBjb25maWcucmVjdCA9IHdlYlZpZXcuYm91bmRzCiAgICAgICAgICAgIGxldCBpbWFnZSA9IHRyeSBhd2FpdCB3ZWJWaWV3LnRha2VTbmFwc2hvdChjb25maWd1cmF0aW9uOiBjb25maWcpCiAgICAgICAgICAgIHdlYlZpZXcuZnJhbWUgPSBvcmlnaW5hbEZyYW1lCiAgICAgICAgICAgIF8gPSBvcmlnaW5hbFN1cGVydmlldyAvLyBmcmFtZSByZXN0b3JlIGlzIGVub3VnaCB3aGlsZSBhdHRhY2hlZDsgc3VwZXJ2aWV3IG5ldmVyIGNoYW5nZWQKICAgICAgICAgICAgc2Nyb2xsVmlldy5jb250ZW50T2Zmc2V0ID0gb3JpZ2luYWxPZmZzZXQKICAgICAgICAgICAgcmV0dXJuIGltYWdlCiAgICAgICAgfSBjYXRjaCB7CiAgICAgICAgICAgIHdlYlZpZXcuZnJhbWUgPSBvcmlnaW5hbEZyYW1lCiAgICAgICAgICAgIHNjcm9sbFZpZXcuY29udGVudE9mZnNldCA9IG9yaWdpbmFsT2Zmc2V0CiAgICAgICAgICAgIC8vIEZhbGwgYmFjayB0byB3aGF0ZXZlciBpcyBvbiBzY3JlZW4gcmF0aGVyIHRoYW4gZmFpbGluZyB0aGUgd2hvbGUgc25hcC4KICAgICAgICAgICAgcmV0dXJuIHRyeSBhd2FpdCBzbmFwc2hvdEN1cnJlbnRWaWV3KCkKICAgICAgICB9CiAgICB9CgogICAgcHJpdmF0ZSBmdW5jIHNuYXBzaG90Q3VycmVudFZpZXcoKSBhc3luYyB0aHJvd3MgLT4gVUlJbWFnZSB7CiAgICAgICAgbGV0IGNvbmZpZyA9IFdLU25hcHNob3RDb25maWd1cmF0aW9uKCkKICAgICAgICBjb25maWcucmVjdCA9IHdlYlZpZXcuYm91bmRzCiAgICAgICAgcmV0dXJuIHRyeSBhd2FpdCB3ZWJWaWV3LnRha2VTbmFwc2hvdChjb25maWd1cmF0aW9uOiBjb25maWcpCiAgICB9Cn0K
+import Foundation
+import WebKit
+import UIKit
+
+/// Owns the single WKWebView for the browser tab and all SNAP capture logic.
+///
+/// Persistence rule for this app: files + UserDefaults only.
+/// No Keychain anywhere (AltStore re-signing breaks Keychain access —
+/// that is what kept logging the user out of another sideloaded app).
+@MainActor
+final class BrowserModel: ObservableObject {
+    let webView: WKWebView
+
+    @Published var addressText: String = ""
+    @Published var pageTitle: String = ""
+    @Published var canGoBack: Bool = false
+    @Published var canGoForward: Bool = false
+    @Published var isLoading: Bool = false
+    @Published var estimatedProgress: Double = 0
+
+    @Published var isSnapping: Bool = false
+    @Published var lastSnapResult: SnapResult?
+
+    private var observations: [NSKeyValueObservation] = []
+
+    static let homeURL = URL(string: "https://example.com")!
+    private static let lastURLKey = "lastURL"
+
+    init() {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .default()
+        // iOS equivalent of Android's "desktop site" plumbing is left out of v0.1.
+        webView = WKWebView(frame: .zero, configuration: config)
+        webView.allowsBackForwardNavigationGestures = true
+
+        observations.append(webView.observe(\.canGoBack, options: [.new]) { [weak self] wv, _ in
+            Task { @MainActor in self?.canGoBack = wv.canGoBack }
+        })
+        observations.append(webView.observe(\.canGoForward, options: [.new]) { [weak self] wv, _ in
+            Task { @MainActor in self?.canGoForward = wv.canGoForward }
+        })
+        observations.append(webView.observe(\.isLoading, options: [.new]) { [weak self] wv, _ in
+            Task { @MainActor in self?.isLoading = wv.isLoading }
+        })
+        observations.append(webView.observe(\.estimatedProgress, options: [.new]) { [weak self] wv, _ in
+            Task { @MainActor in self?.estimatedProgress = wv.estimatedProgress }
+        })
+        observations.append(webView.observe(\.title, options: [.new]) { [weak self] wv, _ in
+            Task { @MainActor in self?.pageTitle = wv.title ?? "" }
+        })
+        observations.append(webView.observe(\.url, options: [.new]) { [weak self] wv, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if let url = wv.url {
+                    self.addressText = url.absoluteString
+                    UserDefaults.standard.set(url.absoluteString, forKey: Self.lastURLKey)
+                }
+            }
+        })
+
+        let start = UserDefaults.standard.string(forKey: Self.lastURLKey)
+            .flatMap(URL.init(string:)) ?? Self.homeURL
+        load(start)
+    }
+
+    // MARK: - Navigation
+
+    func loadAddressBar() {
+        let text = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if let url = Self.urlFromAddressText(text) {
+            load(url)
+        }
+    }
+
+    func load(_ url: URL) {
+        webView.load(URLRequest(url: url))
+    }
+
+    func goBack() { webView.goBack() }
+    func goForward() { webView.goForward() }
+    func reload() { webView.reload() }
+
+    /// Accepts full URLs, bare domains, and plain search terms (Brave Search,
+    /// matching the Android version's default engine).
+    static func urlFromAddressText(_ text: String) -> URL? {
+        if let url = URL(string: text), url.scheme == "http" || url.scheme == "https" {
+            return url
+        }
+        let looksLikeDomain = text.contains(".") && !text.contains(" ")
+        if looksLikeDomain, let url = URL(string: "https://" + text) {
+            return url
+        }
+        var components = URLComponents(string: "https://search.brave.com/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: text)]
+        return components?.url
+    }
+
+    // MARK: - SNAP
+
+    struct SnapResult {
+        var title: String
+        var url: String
+        var imageBytes: Int?
+        var archiveBytes: Int?
+        var textChars: Int?
+        var htmlBytes: Int?
+        var failures: [String]
+    }
+
+    /// One-tap snapshot, mirroring the Android 3-piece set:
+    /// full-page PNG + .webarchive (iOS's archive format) + body text,
+    /// plus the raw HTML source (the portable piece — .webarchive is Apple-only).
+    /// A component counts as saved only when its file actually exists on disk.
+    func snap(store: SnapshotStore) {
+        guard !isSnapping else { return }
+        isSnapping = true
+        lastSnapResult = nil
+
+        Task {
+            var failures: [String] = []
+            let sourceURL = webView.url ?? Self.homeURL
+            let title = webView.title ?? sourceURL.host ?? "ページ"
+
+            // 1) Full-page image (frame-resize capture; falls back to viewport).
+            var imageData: Data?
+            do {
+                let image = try await captureFullPageImage()
+                imageData = image.pngData()
+                if imageData == nil { failures.append("画像のPNG変換に失敗") }
+            } catch {
+                failures.append("画像: \(error.localizedDescription)")
+            }
+
+            // 2) Web archive (.webarchive, iOS 14+).
+            var archiveData: Data?
+            do {
+                archiveData = try await webView.createWebArchiveData()
+            } catch {
+                failures.append("アーカイブ: \(error.localizedDescription)")
+            }
+
+            // 3) Body text via JS.
+            var text: String?
+            do {
+                let raw = try await webView.evaluateJavaScript("document.body ? document.body.innerText : ''")
+                text = raw as? String
+                if text == nil { failures.append("テキスト: 取得結果が文字列でない") }
+            } catch {
+                failures.append("テキスト: \(error.localizedDescription)")
+            }
+
+            // 4) Raw HTML via JS (portable archive companion).
+            var htmlData: Data?
+            do {
+                let raw = try await webView.evaluateJavaScript("document.documentElement ? document.documentElement.outerHTML : ''")
+                if let html = raw as? String {
+                    htmlData = Data(html.utf8)
+                }
+            } catch {
+                failures.append("HTML: \(error.localizedDescription)")
+            }
+
+            var result = SnapResult(title: title,
+                                    url: sourceURL.absoluteString,
+                                    imageBytes: nil, archiveBytes: nil,
+                                    textChars: nil, htmlBytes: nil,
+                                    failures: failures)
+            do {
+                let saved = try store.save(title: title,
+                                           url: sourceURL.absoluteString,
+                                           imageData: imageData,
+                                           archiveData: archiveData,
+                                           text: text,
+                                           htmlData: htmlData)
+                result.imageBytes = saved.imageBytes
+                result.archiveBytes = saved.archiveBytes
+                result.textChars = saved.textChars
+                result.htmlBytes = saved.htmlBytes
+                result.failures.append(contentsOf: saved.failures)
+            } catch {
+                result.failures.append("保存: \(error.localizedDescription)")
+            }
+
+            lastSnapResult = result
+            isSnapping = false
+        }
+    }
+
+    /// Full-page capture by temporarily growing the web view to the page's
+    /// content height, then snapshotting the whole frame.
+    ///
+    /// Caveats (also in FEASIBILITY.md): WKWebView's takeSnapshot only ever
+    /// captures a rect of the view, so pages taller than the cap below are
+    /// captured at reduced fidelity/fail over to the visible viewport.
+    /// Extremely long pages can also hit memory limits while the layer grows.
+    private func captureFullPageImage() async throws -> UIImage {
+        let webView = self.webView
+        let scrollView = webView.scrollView
+
+        let contentHeight = scrollView.contentSize.height
+        let viewportHeight = webView.bounds.height
+        let maxHeight: CGFloat = 16_000
+
+        guard contentHeight > viewportHeight + 1, contentHeight <= maxHeight else {
+            // Short page (or absurdly long): visible-area snapshot is the honest result.
+            return try await snapshotCurrentView()
+        }
+
+        let originalFrame = webView.frame
+        let originalOffset = scrollView.contentOffset
+        let originalSuperview = webView.superview
+
+        // Detach into a full-height frame offscreen, let it lay out, snapshot, restore.
+        webView.frame = CGRect(x: 0, y: 0,
+                               width: originalFrame.width,
+                               height: contentHeight)
+        scrollView.contentOffset = .zero
+        webView.setNeedsLayout()
+        webView.layoutIfNeeded()
+        try await Task.sleep(nanoseconds: 350_000_000)
+
+        do {
+            let config = WKSnapshotConfiguration()
+            config.rect = webView.bounds
+            let image = try await webView.takeSnapshot(configuration: config)
+            webView.frame = originalFrame
+            _ = originalSuperview // frame restore is enough while attached; superview never changed
+            scrollView.contentOffset = originalOffset
+            return image
+        } catch {
+            webView.frame = originalFrame
+            scrollView.contentOffset = originalOffset
+            // Fall back to whatever is on screen rather than failing the whole snap.
+            return try await snapshotCurrentView()
+        }
+    }
+
+    private func snapshotCurrentView() async throws -> UIImage {
+        let config = WKSnapshotConfiguration()
+        config.rect = webView.bounds
+        return try await webView.takeSnapshot(configuration: config)
+    }
+}
