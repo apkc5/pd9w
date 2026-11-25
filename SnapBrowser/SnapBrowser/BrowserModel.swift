@@ -135,7 +135,7 @@ final class BrowserModel: ObservableObject {
             // 2) Web archive (.webarchive, iOS 14+).
             var archiveData: Data?
             do {
-                archiveData = try await webView.createWebArchiveData()
+                archiveData = try await Self.createWebArchiveData(from: webView)
             } catch {
                 failures.append("アーカイブ: \(error.localizedDescription)")
             }
@@ -223,7 +223,7 @@ final class BrowserModel: ObservableObject {
         do {
             let config = WKSnapshotConfiguration()
             config.rect = webView.bounds
-            let image = try await webView.takeSnapshot(configuration: config)
+            let image = try await Self.takeSnapshot(of: webView, configuration: config)
             webView.frame = originalFrame
             _ = originalSuperview // frame restore is enough while attached; superview never changed
             scrollView.contentOffset = originalOffset
@@ -239,6 +239,40 @@ final class BrowserModel: ObservableObject {
     private func snapshotCurrentView() async throws -> UIImage {
         let config = WKSnapshotConfiguration()
         config.rect = webView.bounds
-        return try await webView.takeSnapshot(configuration: config)
+        return try await Self.takeSnapshot(of: webView, configuration: config)
+    }
+
+    // MARK: - WebKit completion-handler bridges
+    // The (Data?, Error?) / (UIImage?, Error?) completion-handler APIs are the
+    // long-standing documented forms; wrap them explicitly instead of relying
+    // on importer-generated async variants.
+
+    private static func createWebArchiveData(from webView: WKWebView) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            webView.createWebArchiveData { data, error in
+                if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: error ?? NSError(
+                        domain: "SnapBrowser", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "webarchive の生成に失敗"]))
+                }
+            }
+        }
+    }
+
+    private static func takeSnapshot(of webView: WKWebView,
+                                     configuration: WKSnapshotConfiguration) async throws -> UIImage {
+        try await withCheckedThrowingContinuation { continuation in
+            webView.takeSnapshot(with: configuration) { image, error in
+                if let image {
+                    continuation.resume(returning: image)
+                } else {
+                    continuation.resume(throwing: error ?? NSError(
+                        domain: "SnapBrowser", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "スナップショット撮影に失敗"]))
+                }
+            }
+        }
     }
 }
