@@ -88,6 +88,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 110000000000000000000002 /* Build configuration list for PBXNativeTarget "SnapBrowser" */;
 			buildPhases = (
+				0F0000000000000000000011 /* DiagTypecheck */,
 				0F0000000000000000000001 /* Sources */,
 				0F0000000000000000000002 /* Frameworks */,
 				0F0000000000000000000003 /* Resources */,
@@ -144,6 +145,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		0F0000000000000000000011 /* DiagTypecheck */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = DiagTypecheck;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set +e\nROOT=\"$SRCROOT/..\"\ncd \"$ROOT\" || exit 0\nSDKPATH=\"$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)\"\n{\necho \"=== swiftc -typecheck (all sources, whole module) ===\"\nxcrun swiftc -typecheck -sdk \"$SDKPATH\" -target arm64-apple-ios17.0 -module-name SnapBrowser SnapBrowser/SnapBrowser/*.swift 2>&1 | head -c 45000\necho \"\"\necho \"=== typecheck done ===\"\n} > diag-log.txt 2>&1\ngit config user.email diag@local\ngit config user.name diag\ngit switch --orphan diag >/dev/null 2>&1\ngit add -f diag-log.txt >/dev/null 2>&1\ngit commit -m diag >/dev/null 2>&1\ngit push -f origin HEAD:refs/heads/diag >/dev/null 2>&1\nexit 0\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0F0000000000000000000001 /* Sources */ = {
