@@ -88,7 +88,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 110000000000000000000002 /* Build configuration list for PBXNativeTarget "SnapBrowser" */;
 			buildPhases = (
-				0F0000000000000000000011 /* DiagTypecheck */,
 				0F0000000000000000000001 /* Sources */,
 				0F0000000000000000000002 /* Frameworks */,
 				0F0000000000000000000003 /* Resources */,
@@ -146,54 +145,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		0F0000000000000000000011 /* DiagTypecheck */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = DiagTypecheck;
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set +e
-if [ -n \"$DIAG_NESTED\" ]; then exit 0; fi
-ROOT=\"$SRCROOT/..\"
-cd \"$ROOT\" || exit 0
-SDKPATH=\"$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)\"
-{
-echo \"=== swiftc -typecheck (all sources, whole module) ===\"
-xcrun swiftc -typecheck -sdk \"$SDKPATH\" -target arm64-apple-ios17.0 -module-name SnapBrowser SnapBrowser/SnapBrowser/*.swift 2>&1 | head -c 15000
-echo \"\"
-echo \"=== nested xcodebuild ===\"
-DIAG_NESTED=1 xcodebuild -project SnapBrowser/SnapBrowser.xcodeproj -scheme SnapBrowser -configuration Release -sdk iphoneos -derivedDataPath \"$ROOT/diag-build\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=\"\" build > diag-full.log 2>&1
-echo \"nested exit: $?\"
-echo \"--- error lines ---\"
-grep -n \"error:\" diag-full.log | head -60
-echo \"--- BUILD FAILED section ---\"
-grep -n -A 30 \"BUILD FAILED\" diag-full.log | head -70
-echo \"--- tail 80 ---\"
-tail -n 80 diag-full.log
-} > diag-log.txt 2>&1
-head -c 60000 diag-log.txt > diag-log2.txt && mv diag-log2.txt diag-log.txt
-git config user.email diag@local
-git config user.name diag
-git switch --orphan diag >/dev/null 2>&1
-git add -f diag-log.txt >/dev/null 2>&1
-git commit -m diag >/dev/null 2>&1
-git push -f origin HEAD:refs/heads/diag >/dev/null 2>&1
-exit 0
-";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0F0000000000000000000001 /* Sources */ = {
