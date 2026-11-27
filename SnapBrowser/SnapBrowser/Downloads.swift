@@ -72,13 +72,14 @@ final class DownloadStore: NSObject, ObservableObject {
     }
 
     /// Takes ownership of a WKDownload handed over by a tab.
+    /// (This SDK's WKDownload exposes no `response` — the suggested
+    /// filename only arrives via the delegate's destination call,
+    /// which renames the item there.)
     func attach(_ download: WKDownload) {
         let item = DownloadItem(
             id: UUID(),
-            fileName: download.response?.suggestedFilename
-                ?? download.originalRequest?.url?.lastPathComponent
-                ?? "download",
-            sourceURL: (download.originalRequest?.url ?? download.response?.url)?.absoluteString,
+            fileName: download.originalRequest?.url?.lastPathComponent ?? "download",
+            sourceURL: download.originalRequest?.url?.absoluteString,
             state: .downloading,
             totalBytes: nil,
             errorMessage: nil,
@@ -149,11 +150,13 @@ extension DownloadStore: WKDownloadDelegate {
             counter += 1
         }
         let destination = directoryURL.appendingPathComponent(candidate)
-        // The item created in attach() carries the suggested name;
-        // align it with the de-duplicated destination so the list
-        // and the file system agree.
+        // The item created in attach() carries the request's file
+        // name; align it with the (possibly de-duplicated)
+        // destination so the list and the file system agree. Match
+        // by source URL first, then by the suggested name.
+        let source = response.url?.absoluteString
         if let index = items.firstIndex(where: {
-            $0.state == .downloading && $0.fileName == suggestedFilename
+            $0.state == .downloading && ($0.sourceURL == source || $0.fileName == suggestedFilename)
         }) {
             items[index].fileName = candidate
             persist()
@@ -162,12 +165,10 @@ extension DownloadStore: WKDownloadDelegate {
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        guard let name = download.response?.suggestedFilename else { return }
-        // The stored item may have been renamed during destination
-        // de-duplication; match the downloading item for this source.
+        // Match the downloading item for this download's source URL.
         let source = download.originalRequest?.url?.absoluteString
         if let index = items.firstIndex(where: {
-            $0.state == .downloading && ($0.sourceURL == source || $0.fileName == name)
+            $0.state == .downloading && $0.sourceURL == source
         }) {
             let item = items[index]
             items[index].state = .completed

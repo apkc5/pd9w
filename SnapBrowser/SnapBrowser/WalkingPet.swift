@@ -10,6 +10,12 @@ private struct GIFImageView: UIViewRepresentable {
     let data: Data
     var animating: Bool = true
 
+    /// Decoded-frame cache: the walking view re-renders on every
+    /// TimelineView tick, and re-decoding the GIF each time would
+    /// burn CPU and restart the frame animation. Keyed by the data
+    /// itself (the pet GIFs are small and few).
+    private static var frameCache: [Data: (images: [UIImage], duration: TimeInterval)] = [:]
+
     func makeUIView(context: Context) -> UIImageView {
         let view = UIImageView()
         view.contentMode = .scaleAspectFit
@@ -28,12 +34,20 @@ private struct GIFImageView: UIViewRepresentable {
     }
 
     private func configure(_ view: UIImageView) {
-        let frames = Self.frames(from: data)
+        let frames: (images: [UIImage], duration: TimeInterval)
+        if let cached = Self.frameCache[data] {
+            frames = cached
+        } else {
+            frames = Self.frames(from: data)
+            Self.frameCache[data] = frames
+        }
         guard let first = frames.images.first else { return }
         if animating, frames.images.count > 1 {
-            view.animationImages = frames.images
-            view.animationDuration = frames.duration
-            view.animationRepeatCount = 0
+            if view.animationImages == nil {
+                view.animationImages = frames.images
+                view.animationDuration = frames.duration
+                view.animationRepeatCount = 0
+            }
             if !view.isAnimating { view.startAnimating() }
         } else {
             view.stopAnimating()
