@@ -16,6 +16,7 @@ struct BookmarksView: View {
     @State private var notice: String?
     @State private var showNewFolder = false
     @State private var newFolderName = ""
+    @State private var editingBookmark: Bookmark?
 
     var body: some View {
         NavigationStack {
@@ -92,10 +93,14 @@ struct BookmarksView: View {
                 BookmarkRow(bookmark: bookmark,
                             subtitle: store.folderName(for: bookmark.folderID),
                             onOpen: onOpen,
-                            onDelete: { store.deleteBookmark(bookmark) })
+                            onDelete: { store.deleteBookmark(bookmark) },
+                            onEdit: { editingBookmark = bookmark })
             }
         }
         .listStyle(.plain)
+        .sheet(item: $editingBookmark) { bookmark in
+            EditBookmarkView(store: store, bookmark: bookmark)
+        }
     }
 
     // MARK: Actions
@@ -145,6 +150,7 @@ struct FolderContentsView: View {
 
     @State private var showNewFolder = false
     @State private var newFolderName = ""
+    @State private var editingBookmark: Bookmark?
 
     var body: some View {
         List {
@@ -172,7 +178,8 @@ struct FolderContentsView: View {
                     BookmarkRow(bookmark: bookmark,
                                 subtitle: nil,
                                 onOpen: onOpen,
-                                onDelete: { store.deleteBookmark(bookmark) })
+                                onDelete: { store.deleteBookmark(bookmark) },
+                                onEdit: { editingBookmark = bookmark })
                 }
             }
             if store.subfolders(of: folderID).isEmpty && store.bookmarks(in: folderID).isEmpty {
@@ -202,6 +209,9 @@ struct FolderContentsView: View {
             }
             Button("キャンセル", role: .cancel) {}
         }
+        .sheet(item: $editingBookmark) { bookmark in
+            EditBookmarkView(store: store, bookmark: bookmark)
+        }
     }
 }
 
@@ -212,6 +222,7 @@ struct BookmarkRow: View {
     var subtitle: String?
     var onOpen: (String) -> Void
     var onDelete: () -> Void
+    var onEdit: () -> Void
 
     var body: some View {
         Button {
@@ -235,6 +246,18 @@ struct BookmarkRow: View {
         }
         .buttonStyle(.plain)
         .swipeActions(edge: .trailing) {
+            Button(role: .destructive, action: onDelete) {
+                Label("削除", systemImage: "trash")
+            }
+            Button(action: onEdit) {
+                Label("編集", systemImage: "pencil")
+            }
+            .tint(Theme.cobalt)
+        }
+        .contextMenu {
+            Button(action: onEdit) {
+                Label("編集", systemImage: "pencil")
+            }
             Button(role: .destructive, action: onDelete) {
                 Label("削除", systemImage: "trash")
             }
@@ -344,6 +367,150 @@ struct AddBookmarkView: View {
         } else {
             duplicate = true
         }
+    }
+}
+
+// MARK: - Edit bookmark (v0.4.2)
+
+/// Edit sheet for an existing bookmark: name, URL and destination
+/// folder. Reached from the row's 編集 swipe action or long-press menu.
+/// Saving updates the bookmark in place — id and ADD_DATE are kept.
+/// If the edited URL already belongs to another bookmark, the save is
+/// refused with a plain inline notice (same dedupe convention as the
+/// add flow: never silently merge); the user can fix the URL or cancel.
+struct EditBookmarkView: View {
+    @ObservedObject var store: BookmarkStore
+    let bookmark: Bookmark
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var urlText: String
+    @State private var selectedFolderID: UUID?
+    @State private var conflictTitle: String?
+
+    init(store: BookmarkStore, bookmark: Bookmark) {
+        self.store = store
+        self.bookmark = bookmark
+        _title = State(initialValue: bookmark.title)
+        _urlText = State(initialValue: bookmark.url)
+        _selectedFolderID = State(initialValue: bookmark.folderID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("名前") {
+                    TextField("名前", text: $title)
+                }
+                Section {
+                    TextField("URL", text: $urlText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                        .keyboardType(.URL)
+                } header: {
+                    Text("URL")
+                } footer: {
+                    if !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && !Self.looksLikeURL(urlText) {
+                        Text("URLとして解釈できませんでした。そのまま保存することもできます")
+                    }
+                }
+                Section("保存先フォルダ") {
+                    ForEach(flatFolders, id: \.folder.id) { entry in
+                        Button {
+                            selectedFolderID = entry.folder.id
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "folder")
+                                    .foregroundStyle(Theme.cobalt)
+                                Text(entry.folder.name)
+                                    .foregroundStyle(Theme.ink)
+                                Spacer()
+                                if selectedFolderID == entry.folder.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Theme.cobalt)
+                                }
+                            }
+                            .padding(.leading, CGFloat(entry.depth) * 16)
+                        }
+                    }
+                }
+                if let conflictTitle {
+                    Section {
+                        Text("そのURLはすでに別のブックマーク「\(conflictTitle)」に登録されているため保存できませんでした")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("ブックマークを編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { save() }
+                        .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private struct FlatFolder {
+        let folder: BookmarkFolder
+        let depth: Int
+    }
+
+    private var flatFolders: [FlatFolder] {
+        var out: [FlatFolder] = []
+        func walk(_ parent: UUID?, _ depth: Int) {
+            for folder in store.subfolders(of: parent) {
+                out.append(FlatFolder(folder: folder, depth: depth))
+                walk(folder.id, depth + 1)
+            }
+        }
+        walk(nil, 0)
+        return out
+    }
+
+    private func save() {
+        let url = Self.normalizedURL(urlText)
+        if store.updateBookmark(id: bookmark.id,
+                                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                                url: url,
+                                folderID: selectedFolderID) {
+            dismiss()
+        } else {
+            conflictTitle = store.conflictingBookmarkTitle(forURL: url, excluding: bookmark.id)
+                ?? "（不明なブックマーク）"
+        }
+    }
+
+    /// Missing-scheme normalisation for hand-typed URLs. Anything that
+    /// already carries an explicit scheme is returned untouched — in
+    /// particular javascript: bookmarklets are never mangled — and text
+    /// containing spaces (not URL-shaped at all) is kept exactly as
+    /// typed instead of being blocked.
+    static func normalizedURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if trimmed.contains("://") { return trimmed }
+        if trimmed.contains(" ") { return trimmed }
+        if let colon = trimmed.firstIndex(of: ":") {
+            let scheme = trimmed[..<colon]
+            if let first = scheme.first, first.isLetter, !scheme.contains("."),
+               scheme.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "+" || $0 == "-" }) {
+                return trimmed
+            }
+        }
+        return "https://" + trimmed
+    }
+
+    static func looksLikeURL(_ raw: String) -> Bool {
+        let normalized = normalizedURL(raw)
+        if normalized.lowercased().hasPrefix("javascript:") { return true }
+        guard let url = URL(string: normalized) else { return false }
+        return url.host != nil
     }
 }
 
