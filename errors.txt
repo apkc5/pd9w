@@ -1,9 +1,343 @@
-typecheck exit: 1
-SnapBrowser/Downloads.swift:78:32: error: value of type 'WKDownload' has no member 'response'
-    |                                `- error: value of type 'WKDownload' has no member 'response'
-SnapBrowser/Downloads.swift:81:67: error: value of type 'WKDownload' has no member 'response'
-    |                                                                   `- error: value of type 'WKDownload' has no member 'response'
-SnapBrowser/Downloads.swift:165:35: error: value of type 'WKDownload' has no member 'response'
-    |                                   `- error: value of type 'WKDownload' has no member 'response'
---- total lines:
-     286
+typecheck SDK=/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk
+SnapBrowser/BrowserTab.swift:975:27: warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
+ 973 |     nonisolated func webView(_ webView: WKWebView,
+ 974 |                              didStartProvisionalNavigation navigation: WKNavigation!) {
+ 975 |         let url = webView.url
+     |                           `- warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
+ 976 |         Task { @MainActor in
+ 977 |             guard let url else { return }
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:172:56: note: property declared here
+170 |  property.
+171 |  */
+172 | @property (nullable, nonatomic, readonly, copy) NSURL *URL;
+    |                                                        `- note: property declared here
+173 | 
+174 | /*! @abstract A Boolean value indicating whether the view is currently
+
+SnapBrowser/BrowserTab.swift:1008:27: warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
+1006 |     nonisolated func webView(_ webView: WKWebView,
+1007 |                              didFinish navigation: WKNavigation!) {
+1008 |         let url = webView.url
+     |                           `- warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
+1009 |         let title = webView.title
+1010 |         Task { @MainActor in
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:172:56: note: property declared here
+170 |  property.
+171 |  */
+172 | @property (nullable, nonatomic, readonly, copy) NSURL *URL;
+    |                                                        `- note: property declared here
+173 | 
+174 | /*! @abstract A Boolean value indicating whether the view is currently
+
+SnapBrowser/BrowserTab.swift:1009:29: warning: main actor-isolated property 'title' can not be referenced from a nonisolated context
+1007 |                              didFinish navigation: WKNavigation!) {
+1008 |         let url = webView.url
+1009 |         let title = webView.title
+     |                             `- warning: main actor-isolated property 'title' can not be referenced from a nonisolated context
+1010 |         Task { @MainActor in
+1011 |             self.loadError = nil
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:164:59: note: property declared here
+162 |  for this property.
+163 |  */
+164 | @property (nullable, nonatomic, readonly, copy) NSString *title;
+    |                                                           `- note: property declared here
+165 | 
+166 | /*! @abstract The active URL.
+
+SnapBrowser/BrowserTab.swift:1052:42: warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
+1050 |                              decidePolicyFor navigationAction: WKNavigationAction,
+1051 |                              decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+1052 |         guard let url = navigationAction.request.url else {
+     |                                          `- warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
+1053 |             decisionHandler(.allow)
+1054 |             return
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationAction.h:78:53: note: property declared here
+ 76 | /*! @abstract The navigation's request. 
+ 77 |  */
+ 78 | @property (nonatomic, readonly, copy) NSURLRequest *request;
+    |                                                     `- note: property declared here
+ 79 | 
+ 80 | /*! @abstract A value indicating whether the web content used a download attribute to indicate that this should be downloaded.
+
+SnapBrowser/BrowserTab.swift:1056:29: warning: main actor-isolated property 'shouldPerformDownload' can not be referenced from a nonisolated context
+1054 |             return
+1055 |         }
+1056 |         if navigationAction.shouldPerformDownload {
+     |                             `- warning: main actor-isolated property 'shouldPerformDownload' can not be referenced from a nonisolated context
+1057 |             decisionHandler(.download)
+1058 |             return
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationAction.h:82:38: note: property declared here
+ 80 | /*! @abstract A value indicating whether the web content used a download attribute to indicate that this should be downloaded.
+ 81 |  */
+ 82 | @property (nonatomic, readonly) BOOL shouldPerformDownload API_AVAILABLE(macos(11.3), ios(14.5));
+    |                                      `- note: property declared here
+ 83 | 
+ 84 | /*! @abstract Whether or not the navigation is a redirect from a content rule list.
+
+SnapBrowser/BrowserTab.swift:1084:32: warning: main actor-isolated property 'canShowMIMEType' can not be referenced from a nonisolated context
+1082 |                              decidePolicyFor navigationResponse: WKNavigationResponse,
+1083 |                              decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+1084 |         if !navigationResponse.canShowMIMEType {
+     |                                `- warning: main actor-isolated property 'canShowMIMEType' can not be referenced from a nonisolated context
+1085 |             decisionHandler(.download)
+1086 |             return
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:51:38: note: property declared here
+49 |  @discussion Allowing a navigation response with a MIME type that can't be shown will cause the navigation to fail.
+50 |  */
+51 | @property (nonatomic, readonly) BOOL canShowMIMEType;
+   |                                      `- note: property declared here
+52 | 
+53 | @end
+
+SnapBrowser/BrowserTab.swift:1088:42: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1086 |             return
+1087 |         }
+1088 |         if let http = navigationResponse.response as? HTTPURLResponse,
+     |                                          `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1089 |            let disposition = http.value(forHTTPHeaderField: "Content-Disposition"),
+1090 |            disposition.lowercased().contains("attachment") {
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
+44 | /*! @abstract The frame's response.
+45 |  */
+46 | @property (nonatomic, readonly, copy) NSURLResponse *response;
+   |                                                      `- note: property declared here
+47 | 
+48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
+
+SnapBrowser/BrowserTab.swift:1097:31: warning: main actor-isolated property 'isForMainFrame' can not be referenced from a nonisolated context
+1095 |         // shown, not downloaded — remember it so the ⋯ menu can offer
+1096 |         // 「このファイルをダウンロード」 for the displayed file.
+1097 |         if navigationResponse.isForMainFrame,
+     |                               `- warning: main actor-isolated property 'isForMainFrame' can not be referenced from a nonisolated context
+1098 |            let url = navigationResponse.response.url,
+1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:42:61: note: property declared here
+40 | /*! @abstract A Boolean value indicating whether the frame being navigated is the main frame.
+41 |  */
+42 | @property (nonatomic, readonly, getter=isForMainFrame) BOOL forMainFrame;
+   |                                                             `- note: property declared here
+43 | 
+44 | /*! @abstract The frame's response.
+
+SnapBrowser/BrowserTab.swift:1098:41: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1096 |         // 「このファイルをダウンロード」 for the displayed file.
+1097 |         if navigationResponse.isForMainFrame,
+1098 |            let url = navigationResponse.response.url,
+     |                                         `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
+44 | /*! @abstract The frame's response.
+45 |  */
+46 | @property (nonatomic, readonly, copy) NSURLResponse *response;
+   |                                                      `- note: property declared here
+47 | 
+48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
+
+SnapBrowser/BrowserTab.swift:1099:17: error: call to main actor-isolated static method 'isInlineDocument(url:mimeType:)' in a synchronous nonisolated context [#ActorIsolatedCall]
+1097 |         if navigationResponse.isForMainFrame,
+1098 |            let url = navigationResponse.response.url,
+1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+     |                 `- error: call to main actor-isolated static method 'isInlineDocument(url:mimeType:)' in a synchronous nonisolated context [#ActorIsolatedCall]
+1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+1101 |             Task { @MainActor in
+     :
+1117 |     ]
+1118 | 
+1119 |     private static func isInlineDocument(url: URL, mimeType: String?) -> Bool {
+     |                         `- note: calls to static method 'isInlineDocument(url:mimeType:)' from outside of its actor context are implicitly asynchronous
+1120 |         if mimeType?.lowercased() == "application/pdf" { return true }
+1121 |         return documentExtensions.contains(url.pathExtension.lowercased())
+
+SnapBrowser/BrowserTab.swift:1099:73: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1097 |         if navigationResponse.isForMainFrame,
+1098 |            let url = navigationResponse.response.url,
+1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+     |                                                                         `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+1101 |             Task { @MainActor in
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
+44 | /*! @abstract The frame's response.
+45 |  */
+46 | @property (nonatomic, readonly, copy) NSURLResponse *response;
+   |                                                      `- note: property declared here
+47 | 
+48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
+
+SnapBrowser/BrowserTab.swift:1100:29: error: call to main actor-isolated static method 'documentName(url:mimeType:)' in a synchronous nonisolated context [#ActorIsolatedCall]
+1098 |            let url = navigationResponse.response.url,
+1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+     |                             `- error: call to main actor-isolated static method 'documentName(url:mimeType:)' in a synchronous nonisolated context [#ActorIsolatedCall]
+1101 |             Task { @MainActor in
+1102 |                 self.currentDocumentName = name
+     :
+1122 |     }
+1123 | 
+1124 |     private static func documentName(url: URL, mimeType: String?) -> String {
+     |                         `- note: calls to static method 'documentName(url:mimeType:)' from outside of its actor context are implicitly asynchronous
+1125 |         let last = url.lastPathComponent
+1126 |         if !last.isEmpty, last != "/" { return last.removingPercentEncoding ?? last }
+
+SnapBrowser/BrowserTab.swift:1100:81: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1098 |            let url = navigationResponse.response.url,
+1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+     |                                                                                 `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1101 |             Task { @MainActor in
+1102 |                 self.currentDocumentName = name
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
+44 | /*! @abstract The frame's response.
+45 |  */
+46 | @property (nonatomic, readonly, copy) NSURLResponse *response;
+   |                                                      `- note: property declared here
+47 | 
+48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
+
+SnapBrowser/BrowserTab.swift:1147:20: error: initializer for conditional binding must have Optional type, not 'WKDownload'
+1145 |             Task { @MainActor in
+1146 |                 guard let self else { return }
+1147 |                 if let download {
+     |                    `- error: initializer for conditional binding must have Optional type, not 'WKDownload'
+1148 |                     self.downloadHandler?(download)
+1149 |                 } else {
+
+SnapBrowser/BrowserTab.swift:1354:36: warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
+1352 |                              for navigationAction: WKNavigationAction,
+1353 |                              windowFeatures: WKWindowFeatures) -> WKWebView? {
+1354 |         let url = navigationAction.request.url
+     |                                    `- warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
+1355 |         Task { @MainActor in
+1356 |             if let url {
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationAction.h:78:53: note: property declared here
+ 76 | /*! @abstract The navigation's request. 
+ 77 |  */
+ 78 | @property (nonatomic, readonly, copy) NSURLRequest *request;
+    |                                                     `- note: property declared here
+ 79 | 
+ 80 | /*! @abstract A value indicating whether the web content used a download attribute to indicate that this should be downloaded.
+
+SnapBrowser/BrowserTab.swift:1368:35: warning: main actor-isolated property 'linkURL' can not be referenced from a nonisolated context
+1366 |                              contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
+1367 |                              completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
+1368 |         let linkURL = elementInfo.linkURL
+     |                                   `- warning: main actor-isolated property 'linkURL' can not be referenced from a nonisolated context
+1369 |         Task { @MainActor in
+1370 |             completionHandler(self.contextMenuConfiguration(linkURL: linkURL))
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKContextMenuElementInfo.h:40:50: note: property declared here
+38 | - (instancetype)init NS_UNAVAILABLE;
+39 | 
+40 | @property (nonatomic, readonly, nullable) NSURL *linkURL;
+   |                                                  `- note: property declared here
+41 | 
+42 | @end
+
+SnapBrowser/BrowserTab.swift:1530:20: warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
+1528 |     nonisolated func userContentController(_ userContentController: WKUserContentController,
+1529 |                                            didReceive message: WKScriptMessage) {
+1530 |         if message.name == Self.blobMessageName {
+     |                    `- warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
+1531 |             guard let body = message.body as? [String: Any] else { return }
+1532 |             Task { @MainActor in self.handleBlobMessage(body) }
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:57:49: note: property declared here
+55 | /*! @abstract The name of the message handler to which the message is sent.
+56 |  */
+57 | @property (nonatomic, readonly, copy) NSString *name;
+   |                                                 `- note: property declared here
+58 | 
+59 | /*! @abstract The content world from which the message was sent. */
+
+SnapBrowser/BrowserTab.swift:1530:33: warning: main actor-isolated static property 'blobMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+  51 |     static let mediaMessageName = "snapMedia"
+  52 |     /// blob: download bridge (v0.4.10) — see blobDownloadScript.
+  53 |     static let blobMessageName = "snapBlob"
+     |                `- note: static property declared here
+  54 | 
+  55 |     /// The model's download store, wired in makeTab. Used directly
+     :
+1528 |     nonisolated func userContentController(_ userContentController: WKUserContentController,
+1529 |                                            didReceive message: WKScriptMessage) {
+1530 |         if message.name == Self.blobMessageName {
+     |                                 `- warning: main actor-isolated static property 'blobMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+1531 |             guard let body = message.body as? [String: Any] else { return }
+1532 |             Task { @MainActor in self.handleBlobMessage(body) }
+
+SnapBrowser/BrowserTab.swift:1531:38: warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
+1529 |                                            didReceive message: WKScriptMessage) {
+1530 |         if message.name == Self.blobMessageName {
+1531 |             guard let body = message.body as? [String: Any] else { return }
+     |                                      `- warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
+1532 |             Task { @MainActor in self.handleBlobMessage(body) }
+1533 |             return
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:47:42: note: property declared here
+45 |  NSDictionary, and NSNull.
+46 |  */
+47 | @property (nonatomic, readonly, copy) id body;
+   |                                          `- note: property declared here
+48 | 
+49 | /*! @abstract The web view sending the message. */
+
+SnapBrowser/BrowserTab.swift:1535:23: warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
+1533 |             return
+1534 |         }
+1535 |         guard message.name == Self.mediaMessageName,
+     |                       `- warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
+1536 |               let body = message.body as? [String: Any],
+1537 |               let type = body["type"] as? String else { return }
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:57:49: note: property declared here
+55 | /*! @abstract The name of the message handler to which the message is sent.
+56 |  */
+57 | @property (nonatomic, readonly, copy) NSString *name;
+   |                                                 `- note: property declared here
+58 | 
+59 | /*! @abstract The content world from which the message was sent. */
+
+SnapBrowser/BrowserTab.swift:1535:36: warning: main actor-isolated static property 'mediaMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+  49 |     private var lastProbeRefresh: Date = .distantPast
+  50 | 
+  51 |     static let mediaMessageName = "snapMedia"
+     |                `- note: static property declared here
+  52 |     /// blob: download bridge (v0.4.10) — see blobDownloadScript.
+  53 |     static let blobMessageName = "snapBlob"
+     :
+1533 |             return
+1534 |         }
+1535 |         guard message.name == Self.mediaMessageName,
+     |                                    `- warning: main actor-isolated static property 'mediaMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+1536 |               let body = message.body as? [String: Any],
+1537 |               let type = body["type"] as? String else { return }
+
+SnapBrowser/BrowserTab.swift:1536:34: warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
+1534 |         }
+1535 |         guard message.name == Self.mediaMessageName,
+1536 |               let body = message.body as? [String: Any],
+     |                                  `- warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
+1537 |               let type = body["type"] as? String else { return }
+1538 |         switch type {
+
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:47:42: note: property declared here
+45 |  NSDictionary, and NSNull.
+46 |  */
+47 | @property (nonatomic, readonly, copy) id body;
+   |                                          `- note: property declared here
+48 | 
+49 | /*! @abstract The web view sending the message. */
+
+[#ActorIsolatedCall]: <https://docs.swift.org/compiler/documentation/diagnostics/actor-isolated-call>
+swiftc exit: 1
