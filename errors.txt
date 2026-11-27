@@ -1,0 +1,9 @@
+typecheck exit: 1
+SnapBrowser/Downloads.swift:78:32: error: value of type 'WKDownload' has no member 'response'
+    |                                `- error: value of type 'WKDownload' has no member 'response'
+SnapBrowser/Downloads.swift:81:67: error: value of type 'WKDownload' has no member 'response'
+    |                                                                   `- error: value of type 'WKDownload' has no member 'response'
+SnapBrowser/Downloads.swift:165:35: error: value of type 'WKDownload' has no member 'response'
+    |                                   `- error: value of type 'WKDownload' has no member 'response'
+--- total lines:
+     286
