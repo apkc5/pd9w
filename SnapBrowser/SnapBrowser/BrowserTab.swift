@@ -49,6 +49,15 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     private var lastProbeRefresh: Date = .distantPast
 
     static let mediaMessageName = "snapMedia"
+    /// blob: download bridge (v0.4.10) — see blobDownloadScript.
+    static let blobMessageName = "snapBlob"
+
+    /// The model's download store, wired in makeTab. Used directly
+    /// (not via downloadHandler) for blob: downloads, which arrive
+    /// as streamed chunks from the page rather than as a WKDownload.
+    var downloadStore: DownloadStore?
+    /// In-flight blob transfers: bridge id → download item id.
+    private var blobTransfers: [String: UUID] = [:]
 
     /// Set while this tab displays a saved snapshot instead of the live page.
     @Published var archiveSnapshot: SnapshotItem?
@@ -84,6 +93,17 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// One-shot notice for flows that end outside the page
     /// (external-scheme hand-off failures, image saves).
     @Published var tabNotice: String?
+
+    /// Name of the document this tab is currently DISPLAYING inline
+    /// (v0.4.10) — a PDF or similar file the web view rendered
+    /// instead of downloading. Non-nil is what makes the ⋯ menu's
+    /// 「このファイルをダウンロード」 appear: until v0.4.9 a PDF
+    /// link simply opened inline (canShowMIMEType is true for PDFs,
+    /// so the response policy allowed it) and there was NO way to
+    /// save the file at all — the user's 「ダウンロードできない」.
+    @Published var currentDocumentName: String?
+    /// URL of that inline document, for the re-download request.
+    private var currentDocumentURL: URL?
 
     /// window.open / target=_blank / context-menu "open in new tab".
     var onOpenInNewTab: ((URL) -> Void)?
@@ -135,6 +155,12 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
                                                injectionTime: .atDocumentEnd,
                                                forMainFrameOnly: false))
         userContent.add(self, name: Self.mediaMessageName)
+        // blob: download bridge (v0.4.10): at document start, main
+        // frame only — see the script's comment for why.
+        userContent.addUserScript(WKUserScript(source: Self.blobDownloadScript,
+                                               injectionTime: .atDocumentStart,
+                                               forMainFrameOnly: true))
+        userContent.add(self, name: Self.blobMessageName)
 
         observations.append(webView.observe(\.canGoBack, options: [.new]) { [weak self] wv, _ in
             Task { @MainActor in self?.canGoBack = wv.canGoBack }
@@ -334,7 +360,14 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         delayedProbeTask?.cancel()
         let userContent = webView.configuration.userContentController
         userContent.removeScriptMessageHandler(forName: Self.mediaMessageName)
+        userContent.removeScriptMessageHandler(forName: Self.blobMessageName)
         userContent.removeAllUserScripts()
+        // A blob transfer cut off by the tab closing fails honestly
+        // instead of sitting at "downloading" until the next launch.
+        for (_, itemID) in blobTransfers {
+            downloadStore?.failManualDownload(id: itemID, message: "タブが閉じられました")
+        }
+        blobTransfers.removeAll()
     }
 
     /// Collects the page's media right now: every <video>'s resolved
@@ -404,6 +437,75 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         }
         pendingLongPress = media
     }
+
+    /// blob: download bridge (v0.4.10). WKWebView cannot download
+    /// blob: URLs at all — clicking a blob download link (what most
+    /// in-browser file generators use: PDF converters, image tools,
+    /// jsPDF-style exporters) simply does nothing, which read to the
+    /// user as 「ダウンロードできない」. This script intercepts clicks
+    /// on blob: anchors in the capture phase (so it also catches
+    /// anchors the page appends and clicks programmatically),
+    /// fetches the blob inside the page, and streams it to native in
+    /// 512KB base64 chunks that are appended to a staging file on
+    /// disk — memory stays flat regardless of file size. The 100MB
+    /// cap is reported honestly instead of pretending.
+    private static let blobDownloadScript = #"""
+    (function () {
+      if (window.__snapBlobBridge) return;
+      window.__snapBlobBridge = true;
+      var CAP = 100 * 1024 * 1024;
+      var CHUNK = 512 * 1024;
+      var seq = 0;
+      function post(msg) {
+        try { window.webkit.messageHandlers.snapBlob.postMessage(msg); } catch (e) {}
+      }
+      function extFor(mime) {
+        switch ((mime || '').toLowerCase()) {
+          case 'application/pdf': return '.pdf';
+          case 'application/zip': return '.zip';
+          case 'image/png': return '.png';
+          case 'image/jpeg': return '.jpg';
+          case 'text/plain': return '.txt';
+          default: return '';
+        }
+      }
+      function sendBlob(blob, name) {
+        if (blob.size > CAP) { post({ type: 'toobig', name: name }); return; }
+        if (!name) name = 'download' + extFor(blob.type);
+        var id = 'blob' + (++seq) + '-' + Date.now();
+        post({ type: 'start', id: id, name: name, size: blob.size, mime: blob.type || '' });
+        var offset = 0;
+        function step() {
+          if (offset >= blob.size) { post({ type: 'end', id: id }); return; }
+          var slice = blob.slice(offset, offset + CHUNK);
+          var reader = new FileReader();
+          reader.onload = function () {
+            var result = String(reader.result || '');
+            var comma = result.indexOf(',');
+            post({ type: 'chunk', id: id, data: comma >= 0 ? result.slice(comma + 1) : '' });
+            offset += slice.size;
+            step();
+          };
+          reader.onerror = function () { post({ type: 'error', id: id }); };
+          reader.readAsDataURL(slice);
+        }
+        step();
+      }
+      document.addEventListener('click', function (event) {
+        var el = event.target;
+        while (el && el !== document && el.tagName !== 'A') el = el.parentElement;
+        if (!el || el.tagName !== 'A') return;
+        var href = el.href || '';
+        if (href.toLowerCase().indexOf('blob:') !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        var name = el.getAttribute('download') || '';
+        fetch(href).then(function (r) { return r.blob(); }).then(function (blob) {
+          sendBlob(blob, name);
+        }).catch(function () { post({ type: 'error', id: '' }); });
+      }, true);
+    })();
+    """#
 
     /// Collect script (run on demand via evaluateJavaScript):
     /// resolves every video's source the same way the long-press
@@ -638,7 +740,15 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     func capturePreview(matching size: CGSize) {
         guard !showsStartPage else { return }
         var resized = false
-        if size.width > 0, webView.bounds.size != size {
+        // Never write the frame of a HOSTED web view by hand
+        // (v0.4.10): SwiftUI's container owns that frame, and a
+        // manual write is how a stale, larger-than-window size used
+        // to get into the layout and stick (the page then rendered
+        // wider than a floating window). Only off-screen background
+        // web views — which SwiftUI is not laying out — get the
+        // manual resize, and the container forces the correct size
+        // the moment such a tab is hosted.
+        if size.width > 0, webView.window == nil, webView.bounds.size != size {
             webView.frame = CGRect(origin: .zero, size: size)
             resized = true
         }
@@ -797,15 +907,22 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         webView.layoutIfNeeded()
         try await Task.sleep(nanoseconds: 350_000_000)
 
+        // Restore target (v0.4.10): a hosted web view goes back to
+        // its container's bounds — the size SwiftUI currently wants —
+        // not the frame saved before the grow, which is stale if the
+        // window was resized while the capture ran. (The container's
+        // layoutSubviews would correct a wrong restore on the next
+        // layout pass anyway; this keeps it right immediately.)
+        let restoreFrame = webView.superview?.bounds ?? originalFrame
         do {
             let config = WKSnapshotConfiguration()
             config.rect = webView.bounds
             let image = try await Self.takeSnapshot(of: webView, configuration: config)
-            webView.frame = originalFrame
+            webView.frame = restoreFrame
             scrollView.contentOffset = originalOffset
             return image
         } catch {
-            webView.frame = originalFrame
+            webView.frame = restoreFrame
             scrollView.contentOffset = originalOffset
             return try await snapshotCurrentView()
         }
@@ -877,6 +994,11 @@ extension BrowserTab: WKNavigationDelegate {
                 self.detectedMedia = []
                 self.pendingLongPress = nil
                 self.delayedProbeTask?.cancel()
+                // The previous page's inline document is gone too;
+                // the response policy re-marks it if the new page is
+                // itself a document (v0.4.10).
+                self.currentDocumentName = nil
+                self.currentDocumentURL = nil
             }
         }
     }
@@ -969,7 +1091,56 @@ extension BrowserTab: WKNavigationDelegate {
             decisionHandler(.download)
             return
         }
+        // Inline-displayable document (v0.4.10): the response will be
+        // shown, not downloaded — remember it so the ⋯ menu can offer
+        // 「このファイルをダウンロード」 for the displayed file.
+        if navigationResponse.isForMainFrame,
+           let url = navigationResponse.response.url,
+           Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+            let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+            Task { @MainActor in
+                self.currentDocumentName = name
+                self.currentDocumentURL = url
+            }
+        }
         decisionHandler(.allow)
+    }
+
+    /// MIME types / extensions treated as a downloadable document
+    /// when the web view displays them inline instead of downloading.
+    /// (Types WebKit cannot display never reach here — they already
+    /// became WKDownloads above. The realistic inline cases are PDF,
+    /// plain text, and office files served with a displayable type.)
+    private static let documentExtensions: Set<String> = [
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+        "epub", "csv", "tsv", "rtf", "odt", "ods", "odp",
+    ]
+
+    private static func isInlineDocument(url: URL, mimeType: String?) -> Bool {
+        if mimeType?.lowercased() == "application/pdf" { return true }
+        return documentExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    private static func documentName(url: URL, mimeType: String?) -> String {
+        let last = url.lastPathComponent
+        if !last.isEmpty, last != "/" { return last.removingPercentEncoding ?? last }
+        if mimeType?.lowercased() == "application/pdf" { return "document.pdf" }
+        return "document"
+    }
+
+    /// ⋯ menu 「このファイルをダウンロード」 (v0.4.10): re-fetches the
+    /// document this tab is displaying (a PDF opened inline, …) as a
+    /// real download through the web view, so the request carries
+    /// the page's cookies/session, and hands it to the download
+    /// store via the usual handler. Honest limit: the file is
+    /// fetched with a fresh GET — a document that only exists as
+    /// the result of a POST may not come back identically.
+    func downloadCurrentDocument() {
+        guard let url = currentDocumentURL ?? webView.url,
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return }
+        let download = webView.startDownload(using: URLRequest(url: url))
+        downloadHandler?(download)
     }
 
     nonisolated func webView(_ webView: WKWebView,
@@ -1299,11 +1470,58 @@ extension BrowserTab: WKUIDelegate {
     }
 }
 
-// MARK: - Media probe messages (v0.4.6)
+// MARK: - Media probe messages (v0.4.6) + blob downloads (v0.4.10)
+
+extension BrowserTab {
+    /// Native end of the blob: bridge (see blobDownloadScript). The
+    /// store writes chunks straight to a staging file, so a large
+    /// blob never sits in memory on either side of the bridge.
+    func handleBlobMessage(_ body: [String: Any]) {
+        guard let store = downloadStore else { return }
+        switch body["type"] as? String ?? "" {
+        case "start":
+            guard let bridgeID = body["id"] as? String else { return }
+            let rawName = (body["name"] as? String) ?? ""
+            let name = rawName.isEmpty ? "download" : rawName
+            let size = (body["size"] as? NSNumber)?.int64Value
+            let itemID = store.beginManualDownload(fileName: name,
+                                                   sourceURL: currentURLString,
+                                                   totalBytes: size)
+            blobTransfers[bridgeID] = itemID
+        case "chunk":
+            guard let bridgeID = body["id"] as? String,
+                  let itemID = blobTransfers[bridgeID],
+                  let base64 = body["data"] as? String,
+                  let data = Data(base64Encoded: base64) else { return }
+            store.appendManualChunk(id: itemID, data: data)
+        case "end":
+            guard let bridgeID = body["id"] as? String,
+                  let itemID = blobTransfers.removeValue(forKey: bridgeID) else { return }
+            store.finishManualDownload(id: itemID)
+        case "error":
+            if let bridgeID = body["id"] as? String,
+               let itemID = blobTransfers.removeValue(forKey: bridgeID) {
+                store.failManualDownload(id: itemID,
+                                         message: "ページからの読み取りに失敗しました")
+            } else {
+                tabNotice = "ダウンロードに失敗しました"
+            }
+        case "toobig":
+            tabNotice = "ファイルが大きすぎて保存できませんでした（上限は100MBです）"
+        default:
+            break
+        }
+    }
+}
 
 extension BrowserTab: WKScriptMessageHandler {
     nonisolated func userContentController(_ userContentController: WKUserContentController,
                                            didReceive message: WKScriptMessage) {
+        if message.name == Self.blobMessageName {
+            guard let body = message.body as? [String: Any] else { return }
+            Task { @MainActor in self.handleBlobMessage(body) }
+            return
+        }
         guard message.name == Self.mediaMessageName,
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }

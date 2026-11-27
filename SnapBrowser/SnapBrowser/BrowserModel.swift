@@ -55,7 +55,14 @@ final class BrowserModel: ObservableObject {
         tabs.first { $0.id == activeTabID } ?? tabs[0]
     }
 
+    /// Download lifecycle notices forwarded from DownloadStore
+    /// (v0.4.10); ContentView turns each into a toast.
+    @Published var downloadNotice: String?
+
     init() {
+        downloads.onNotice = { [weak self] text in
+            self?.downloadNotice = text
+        }
         if let data = UserDefaults.standard.data(forKey: Self.closedTabsKey),
            let decoded = try? JSONDecoder().decode([ClosedTab].self, from: data) {
             closedTabs = decoded
@@ -85,6 +92,8 @@ final class BrowserModel: ObservableObject {
         tab.downloadHandler = { [weak self] download in
             self?.downloads.attach(download)
         }
+        // blob: downloads stream through the store directly.
+        tab.downloadStore = downloads
         return tab
     }
 
@@ -130,6 +139,19 @@ final class BrowserModel: ObservableObject {
         guard tab.id != activeTabID else { return }
         activeTab.capturePreview()
         activeTabID = tab.id
+        persistSession()
+    }
+
+    /// Reorders the tab list (tab-overview card drag, v0.4.10). The
+    /// array order IS the tab-strip order and the persisted session
+    /// order, so this single move updates both, and persistSession()
+    /// keeps the new order across relaunches.
+    func moveTab(fromIndex: Int, toIndex: Int) {
+        guard fromIndex != toIndex,
+              tabs.indices.contains(fromIndex),
+              tabs.indices.contains(toIndex) else { return }
+        let tab = tabs.remove(at: fromIndex)
+        tabs.insert(tab, at: toIndex)
         persistSession()
     }
 
