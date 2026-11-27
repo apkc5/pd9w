@@ -247,6 +247,106 @@ struct BookmarkRow: View {
     }
 }
 
+// MARK: - Add bookmark (folder picker, v0.4)
+
+/// Add-bookmark sheet opened from the browser menu: editable title and
+/// a folder picker over the whole folder tree (indented by depth).
+struct AddBookmarkView: View {
+    @ObservedObject var store: BookmarkStore
+    let url: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var selectedFolderID: UUID?
+    @State private var duplicate = false
+
+    init(store: BookmarkStore, initialTitle: String, url: String) {
+        self.store = store
+        self.url = url
+        _title = State(initialValue: initialTitle)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("ページ") {
+                    TextField("タイトル", text: $title)
+                    Text(url)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Section("保存先フォルダ") {
+                    ForEach(flatFolders, id: \.folder.id) { entry in
+                        Button {
+                            selectedFolderID = entry.folder.id
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "folder")
+                                    .foregroundStyle(Theme.cobalt)
+                                Text(entry.folder.name)
+                                    .foregroundStyle(Theme.ink)
+                                Spacer()
+                                if selectedFolderID == entry.folder.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Theme.cobalt)
+                                }
+                            }
+                            .padding(.leading, CGFloat(entry.depth) * 16)
+                        }
+                    }
+                }
+                if duplicate {
+                    Section {
+                        Text("このページはすでにブックマークされています")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("ブックマークに追加")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { save() }
+                }
+            }
+            .onAppear {
+                if selectedFolderID == nil {
+                    selectedFolderID = store.defaultFolderID
+                }
+            }
+        }
+    }
+
+    private struct FlatFolder {
+        let folder: BookmarkFolder
+        let depth: Int
+    }
+
+    private var flatFolders: [FlatFolder] {
+        var out: [FlatFolder] = []
+        func walk(_ parent: UUID?, _ depth: Int) {
+            for folder in store.subfolders(of: parent) {
+                out.append(FlatFolder(folder: folder, depth: depth))
+                walk(folder.id, depth + 1)
+            }
+        }
+        walk(nil, 0)
+        return out
+    }
+
+    private func save() {
+        if store.addBookmark(title: title, url: url, folderID: selectedFolderID) {
+            dismiss()
+        } else {
+            duplicate = true
+        }
+    }
+}
+
 // MARK: - Export document
 
 struct HTMLFileDocument: FileDocument {
