@@ -412,12 +412,7 @@ private struct BrowserTabView: View {
                     if !deviceMatches.isEmpty {
                         deviceSectionHeader
                         ForEach(deviceMatches) { match in
-                            panelRow(icon: match.isBookmark ? "bookmark.fill" : "clock.arrow.circlepath",
-                                     title: match.title,
-                                     subtitle: match.url) {
-                                addressFocused = false
-                                manager.openInActiveTab(match.url)
-                            }
+                            devicePanelRow(match)
                         }
                     }
                 }
@@ -522,6 +517,58 @@ private struct BrowserTabView: View {
         .buttonStyle(.plain)
     }
 
+    /// A device-match row with its own × at the right end (v0.4.8).
+    /// The × and the row body are sibling buttons — never nested —
+    /// so a tap on × can only hide, never navigate. Hiding is
+    /// panel-only: the URL is recorded in
+    /// `settings.hiddenSuggestionURLs` and the row disappears at
+    /// once (the settings change re-renders the panel); the history
+    /// and bookmark stores are left completely untouched, so the
+    /// entry remains visible in its own screen.
+    private func devicePanelRow(_ match: PanelMatch) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                addressFocused = false
+                manager.openInActiveTab(match.url)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: match.isBookmark ? "bookmark.fill" : "clock.arrow.circlepath")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(match.title)
+                            .font(.body)
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                        Text(match.url)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                settings.hideSuggestionURL(match.url)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("この候補を隠す")
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 6)
+        .frame(minHeight: 44)
+    }
+
     private struct PanelMatch: Identifiable {
         let id: String
         let title: String
@@ -532,24 +579,30 @@ private struct BrowserTabView: View {
     /// On-device matches for the typed text: bookmarks first, then
     /// history (title or URL contains the text, case-insensitive),
     /// de-duplicated by URL, 8 rows max. With an empty field this is
-    /// simply the most recent history, like Brave's panel.
+    /// simply the most recent history, like Brave's panel. URLs the
+    /// user hid with a row's × (v0.4.8) are filtered out here — the
+    /// underlying history / bookmark entries are never deleted.
     private var deviceMatches: [PanelMatch] {
         let query = panelQuery
         if query.isEmpty {
-            return manager.history.items.prefix(8).map {
-                PanelMatch(id: "h-\($0.id.uuidString)",
-                           title: $0.title, url: $0.url, isBookmark: false)
-            }
+            return manager.history.items
+                .filter { !settings.isSuggestionHidden($0.url) }
+                .prefix(8).map {
+                    PanelMatch(id: "h-\($0.id.uuidString)",
+                               title: $0.title, url: $0.url, isBookmark: false)
+                }
         }
         var results: [PanelMatch] = []
         var seen = Set<String>()
-        for bookmark in manager.bookmarks.search(query) {
+        for bookmark in manager.bookmarks.search(query)
+        where !settings.isSuggestionHidden(bookmark.url) {
             results.append(PanelMatch(id: "b-\(bookmark.id.uuidString)",
                                       title: bookmark.title, url: bookmark.url,
                                       isBookmark: true))
             seen.insert(bookmark.url)
         }
-        for item in manager.history.search(query) where !seen.contains(item.url) {
+        for item in manager.history.search(query)
+        where !seen.contains(item.url) && !settings.isSuggestionHidden(item.url) {
             results.append(PanelMatch(id: "h-\(item.id.uuidString)",
                                       title: item.title, url: item.url,
                                       isBookmark: false))

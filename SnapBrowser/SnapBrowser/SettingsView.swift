@@ -33,10 +33,14 @@ struct SettingsView: View {
                         }
                     }
                     Toggle("検索候補を表示", isOn: $settings.searchSuggestionsEnabled)
+                    Button("候補から隠した項目をリセット") {
+                        settings.resetHiddenSuggestions()
+                    }
+                    .disabled(settings.hiddenSuggestionURLs.isEmpty)
                 } header: {
                     Text("検索")
                 } footer: {
-                    Text("検索候補を有効にすると、アドレスバーに入力中の文字が選択中の検索エンジンに送信され、候補が表示されます。")
+                    Text("検索候補を有効にすると、アドレスバーに入力中の文字が選択中の検索エンジンに送信され、候補が表示されます。「お使いのデバイス」の候補で×を押した項目は、履歴・ブックマークからは消えず、候補に出なくなるだけです。上のリセットで元に戻せます。")
                 }
 
                 Section("表示") {
