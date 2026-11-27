@@ -40,6 +40,7 @@ final class AppSettings: ObservableObject {
         static let textSize = "settings.textSizePercent"
         static let searchSuggestions = "settings.searchSuggestionsEnabled"
         static let suggestPromptDismissed = "settings.suggestPromptDismissed"
+        static let hiddenSuggestionURLs = "settings.hiddenSuggestionURLs"
     }
 
     @Published var searchEngine: SearchEngine {
@@ -71,12 +72,38 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(suggestPromptDismissed, forKey: Keys.suggestPromptDismissed) }
     }
 
+    /// URLs hidden from the address-bar panel's 「お使いのデバイス」
+    /// section via its per-row × button (v0.4.8). Hide-only: the
+    /// history and bookmark stores are NEVER touched — a hidden entry
+    /// stays fully visible in the History / Bookmarks screens, and
+    /// this set only filters what the panel offers. Persisted in
+    /// UserDefaults; Settings can reset it back to empty.
+    @Published private(set) var hiddenSuggestionURLs: Set<String> {
+        didSet {
+            UserDefaults.standard.set(hiddenSuggestionURLs.sorted(),
+                                      forKey: Keys.hiddenSuggestionURLs)
+        }
+    }
+
+    func hideSuggestionURL(_ url: String) {
+        hiddenSuggestionURLs.insert(url)
+    }
+
+    func isSuggestionHidden(_ url: String) -> Bool {
+        hiddenSuggestionURLs.contains(url)
+    }
+
+    func resetHiddenSuggestions() {
+        hiddenSuggestionURLs = []
+    }
+
     init() {
         let defaults = UserDefaults.standard
         searchEngine = SearchEngine(rawValue: defaults.string(forKey: Keys.searchEngine) ?? "") ?? .brave
         desktopByDefault = defaults.bool(forKey: Keys.desktopDefault)
         searchSuggestionsEnabled = defaults.bool(forKey: Keys.searchSuggestions)
         suggestPromptDismissed = defaults.bool(forKey: Keys.suggestPromptDismissed)
+        hiddenSuggestionURLs = Set(defaults.stringArray(forKey: Keys.hiddenSuggestionURLs) ?? [])
         let storedSize = defaults.integer(forKey: Keys.textSize)
         textSizePercent = storedSize == 0 ? 100 : storedSize
     }
