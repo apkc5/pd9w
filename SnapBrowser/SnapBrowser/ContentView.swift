@@ -11,7 +11,7 @@ struct ContentView: View {
     @State private var showingAddBookmark = false
 
     private enum SheetKind: String, Identifiable {
-        case library, bookmarks, history, settings
+        case library, bookmarks, history, settings, playlist
         var id: String { rawValue }
     }
 
@@ -29,6 +29,7 @@ struct ContentView: View {
             onShowBookmarks: { sheet = .bookmarks },
             onShowHistory: { sheet = .history },
             onShowSettings: { sheet = .settings },
+            onShowPlaylist: { sheet = .playlist },
             onAddBookmark: { showingAddBookmark = true },
             onShare: { shareCurrentPage() },
             onReader: { showingReader = true }
@@ -63,6 +64,11 @@ struct ContentView: View {
                     onOpen: { url in
                         manager.openInActiveTab(url)
                         sheet = nil
+                    },
+                    onAddToPlaylist: { bookmark in
+                        manager.playlist.add(title: bookmark.title,
+                                             url: bookmark.url,
+                                             pageURL: nil)
                     })
             case .history:
                 HistoryView(store: manager.history,
@@ -72,6 +78,8 @@ struct ContentView: View {
                             })
             case .settings:
                 SettingsView(manager: manager, settings: manager.settings)
+            case .playlist:
+                PlaylistView(store: manager.playlist)
             }
         }
         .sheet(item: $sharePayload) { payload in
@@ -138,6 +146,7 @@ private struct BrowserTabView: View {
     var onShowBookmarks: () -> Void
     var onShowHistory: () -> Void
     var onShowSettings: () -> Void
+    var onShowPlaylist: () -> Void
     var onAddBookmark: () -> Void
     var onShare: () -> Void
     var onReader: () -> Void
@@ -146,6 +155,11 @@ private struct BrowserTabView: View {
     @State private var findQuery = ""
     @State private var findCount: Int?
     @State private var findMiss = false
+    @State private var showMediaPicker = false
+    @State private var mediaPickerItems: [DetectedMedia] = []
+    @State private var playlistNotice: String?
+    @State private var toastText: String?
+    @State private var toastTask: Task<Void, Never>?
     @State private var stripFrame: CGRect = .zero
     @FocusState private var addressFocused: Bool
     @State private var suggestions: [String] = []
@@ -196,6 +210,18 @@ private struct BrowserTabView: View {
             }
             toolbar
         }
+        .overlay(alignment: .bottom) {
+            if let toastText {
+                Text(toastText)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(Color.black.opacity(0.85)))
+                    .padding(.bottom, 64)
+                    .transition(.opacity)
+            }
+        }
         }
         .background(Theme.paper)
         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
@@ -215,6 +241,38 @@ private struct BrowserTabView: View {
             if let result = tab.lastSnapResult {
                 Text(snapMessage(result))
             }
+        }
+        .sheet(isPresented: $showMediaPicker) {
+            DetectedMediaSheet(playlist: manager.playlist,
+                               items: mediaPickerItems,
+                               pageTitle: tab.pageTitle,
+                               onAdded: { count in
+                                   showToast("Playlistに \(count) 件追加しました")
+                               })
+        }
+        .confirmationDialog("この動画をPlaylistに追加しますか？",
+                            isPresented: pendingLongPressBinding,
+                            titleVisibility: .visible) {
+            Button("Playlistに追加") {
+                if let media = tab.pendingLongPress {
+                    addToPlaylist(title: tab.pageTitle, url: media.url,
+                                  pageURL: tab.currentURLString)
+                }
+                tab.pendingLongPress = nil
+            }
+            Button("キャンセル", role: .cancel) { tab.pendingLongPress = nil }
+        } message: {
+            Text(tab.pendingLongPress?.url ?? "")
+        }
+        .alert("動画の保存", isPresented: mediaNoticeBinding) {
+            Button("OK", role: .cancel) { tab.mediaNotice = nil }
+        } message: {
+            Text(tab.mediaNotice ?? "")
+        }
+        .alert("Playlist", isPresented: playlistNoticeBinding) {
+            Button("OK", role: .cancel) { playlistNotice = nil }
+        } message: {
+            Text(playlistNotice ?? "")
         }
     }
 
@@ -695,6 +753,33 @@ private struct BrowserTabView: View {
             }
             .disabled(tab.isSnapping || tab.showsStartPage || tab.archiveSnapshot != nil)
 
+            // Save badge (v0.4.6): appears ONLY when the page has
+            // saveable media. Sits next to SNAP without changing the
+            // bar's layout for pages without videos.
+            if detectedSaveableCount > 0 {
+                Spacer()
+
+                Button {
+                    mediaPickerItems = tab.detectedMedia
+                    showMediaPicker = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "arrow.down.to.line")
+                            .font(.body)
+                            .foregroundStyle(Theme.ink)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                        Text("\(detectedSaveableCount)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Theme.cobalt))
+                            .offset(x: 2, y: 4)
+                    }
+                }
+            }
+
             Spacer()
 
             // Tabs button with count, Brave-style.
@@ -748,6 +833,12 @@ private struct BrowserTabView: View {
                         Label("ブックマークに追加…", systemImage: "bookmark")
                     }
                     .disabled(tab.showsStartPage)
+                    Button {
+                        addCurrentPageToPlaylist()
+                    } label: {
+                        Label("Playlistに追加", systemImage: "video.badge.plus")
+                    }
+                    .disabled(tab.showsStartPage || tab.archiveSnapshot != nil || tab.isPrivate)
                 }
                 Section {
                     Button(action: onShowBookmarks) {
@@ -758,6 +849,9 @@ private struct BrowserTabView: View {
                     }
                     Button(action: onShowLibrary) {
                         Label("ライブラリ", systemImage: "books.vertical")
+                    }
+                    Button(action: onShowPlaylist) {
+                        Label("Playlist", systemImage: "play.rectangle.on.rectangle")
                     }
                 }
                 Section {
@@ -781,6 +875,76 @@ private struct BrowserTabView: View {
     private var desktopBinding: Binding<Bool> {
         Binding(get: { tab.desktopMode },
                 set: { tab.setDesktopMode($0) })
+    }
+
+    // MARK: Playlist add flows (v0.4.6)
+
+    /// Saveable (http/https) media count for the toolbar badge.
+    /// blob:-only pages keep the badge hidden — the long-press
+    /// notice covers that case honestly instead.
+    private var detectedSaveableCount: Int {
+        tab.detectedMedia.filter { $0.isHTTP }.count
+    }
+
+    private var pendingLongPressBinding: Binding<Bool> {
+        Binding(get: { tab.pendingLongPress != nil },
+                set: { if !$0 { tab.pendingLongPress = nil } })
+    }
+
+    private var mediaNoticeBinding: Binding<Bool> {
+        Binding(get: { tab.mediaNotice != nil },
+                set: { if !$0 { tab.mediaNotice = nil } })
+    }
+
+    private var playlistNoticeBinding: Binding<Bool> {
+        Binding(get: { playlistNotice != nil },
+                set: { if !$0 { playlistNotice = nil } })
+    }
+
+    private func showToast(_ text: String) {
+        toastTask?.cancel()
+        withAnimation { toastText = text }
+        toastTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if Task.isCancelled { return }
+            withAnimation { toastText = nil }
+        }
+    }
+
+    private func addToPlaylist(title: String, url: String, pageURL: String?) {
+        if manager.playlist.add(title: title, url: url, pageURL: pageURL) {
+            showToast("Playlistに追加しました")
+        } else {
+            showToast("すでにPlaylistにあります")
+        }
+    }
+
+    /// ⋯ menu 「Playlistに追加」: a media-file page adds itself;
+    /// otherwise the page is (re)scanned and its media are added —
+    /// directly when there is exactly one, via the picker sheet
+    /// when there are several, and with an honest notice when there
+    /// are none (or only unsaveable blob: media).
+    private func addCurrentPageToPlaylist() {
+        if let current = tab.currentURLString, PlaylistMedia.isMediaURL(current) {
+            addToPlaylist(title: tab.pageTitle, url: current, pageURL: nil)
+            return
+        }
+        Task {
+            await tab.refreshDetectedMedia()
+            let found = tab.detectedMedia
+            let saveable = found.filter { $0.isHTTP }
+            if saveable.isEmpty {
+                playlistNotice = found.isEmpty
+                    ? "このページに動画が見つかりませんでした"
+                    : "このページの動画は保存できません（blob:）"
+            } else if saveable.count == 1 {
+                addToPlaylist(title: tab.pageTitle, url: saveable[0].url,
+                              pageURL: tab.currentURLString)
+            } else {
+                mediaPickerItems = found
+                showMediaPicker = true
+            }
+        }
     }
 
     // MARK: Snap result

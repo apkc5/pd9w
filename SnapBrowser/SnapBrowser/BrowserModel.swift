@@ -15,6 +15,7 @@ final class BrowserModel: ObservableObject {
 
     let bookmarks = BookmarkStore()
     let history = HistoryStore()
+    let playlist = PlaylistStore()
     let settings = AppSettings()
 
     private static let sessionKey = "session.tabs.v2"
@@ -70,6 +71,7 @@ final class BrowserModel: ObservableObject {
     func closeTab(_ tab: BrowserTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
         let wasActive = tab.id == activeTabID
+        tab.teardown()
         tabs.remove(at: index)
         if tabs.isEmpty {
             let fresh = makeTab()

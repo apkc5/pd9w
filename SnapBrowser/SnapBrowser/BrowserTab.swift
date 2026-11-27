@@ -30,6 +30,25 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     @Published var showsStartPage: Bool = true
     @Published var previewImage: UIImage?
 
+    /// Media detected on the current page (v0.4.6): drives the
+    /// toolbar save badge and the ⋯ menu's Playlist add. Refreshed
+    /// after each navigation finishes, once more ~3s later for
+    /// lazily-loaded videos, and on light DOM-change notifications
+    /// from the probe script (event-driven, no polling).
+    @Published var detectedMedia: [DetectedMedia] = []
+    /// A video long-press resolved to a saveable URL: ContentView
+    /// shows the add confirmation while this is non-nil. Feedback is
+    /// guaranteed — unresolvable presses land in mediaNotice instead.
+    @Published var pendingLongPress: DetectedMedia?
+    /// Honest dead-end notice for a long-pressed video (blob: / no
+    /// resolvable URL), shown as an alert by ContentView.
+    @Published var mediaNotice: String?
+
+    private var delayedProbeTask: Task<Void, Never>?
+    private var lastProbeRefresh: Date = .distantPast
+
+    static let mediaMessageName = "snapMedia"
+
     /// Set while this tab displays a saved snapshot instead of the live page.
     @Published var archiveSnapshot: SnapshotItem?
     private(set) var archiveFileURL: URL?
@@ -65,6 +84,17 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
             webView.customUserAgent = Self.desktopUserAgent
         }
         webView.pageZoom = CGFloat(settings.textSizePercent) / 100.0
+
+        // Media probe (v0.4.6): one user script in every frame —
+        // video long-press detection plus a debounced DOM-change
+        // ping — reporting back through the snapMedia handler.
+        // Registered before the initial load below so the start page
+        // load is covered too.
+        let userContent = webView.configuration.userContentController
+        userContent.addUserScript(WKUserScript(source: Self.mediaProbeScript,
+                                               injectionTime: .atDocumentEnd,
+                                               forMainFrameOnly: false))
+        userContent.add(self, name: Self.mediaMessageName)
 
         observations.append(webView.observe(\.canGoBack, options: [.new]) { [weak self] wv, _ in
             Task { @MainActor in self?.canGoBack = wv.canGoBack }
@@ -254,6 +284,235 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
       return JSON.stringify({ title: title, html: clone.innerHTML || '' });
     })()
     """
+
+    // MARK: - Media detection & video long-press (v0.4.6, Playlist)
+
+    /// Removes the probe script and message handler. The user
+    /// content controller retains its handler, so without this a
+    /// closed tab (and its web view) would leak for the session.
+    func teardown() {
+        delayedProbeTask?.cancel()
+        let userContent = webView.configuration.userContentController
+        userContent.removeScriptMessageHandler(forName: Self.mediaMessageName)
+        userContent.removeAllUserScripts()
+    }
+
+    /// Collects the page's media right now: every <video>'s resolved
+    /// source (currentSrc, src attribute, <source> children) plus
+    /// anchor hrefs that point straight at media files.
+    func collectPageMedia() async -> [DetectedMedia] {
+        guard let raw = try? await webView.evaluateJavaScript(Self.mediaCollectScript),
+              let json = raw as? String,
+              let data = json.data(using: .utf8),
+              let urls = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return urls.map { DetectedMedia(url: $0) }
+    }
+
+    /// Refreshes the published detection state (badge / menu add).
+    /// Private tabs, the start page, archive views and non-http(s)
+    /// pages never report media.
+    func refreshDetectedMedia() async {
+        guard !isPrivate, !showsStartPage, archiveSnapshot == nil,
+              let scheme = webView.url?.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            if !detectedMedia.isEmpty { detectedMedia = [] }
+            return
+        }
+        lastProbeRefresh = Date()
+        let found = await collectPageMedia()
+        if found != detectedMedia { detectedMedia = found }
+    }
+
+    /// One delayed re-scan (~3s after a navigation finishes) so
+    /// lazily-loaded videos still get detected — exactly one extra
+    /// pass, per the "no heavy polling" rule.
+    private func scheduleDelayedProbe() {
+        delayedProbeTask?.cancel()
+        delayedProbeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if Task.isCancelled { return }
+            await self?.refreshDetectedMedia()
+        }
+    }
+
+    /// The probe script reports DOM changes at most ~1/s; re-collect
+    /// at most every 1.5s so a busy page cannot stampede the bridge.
+    private func scheduleProbeRefresh() {
+        guard Date().timeIntervalSince(lastProbeRefresh) > 1.5 else { return }
+        Task { @MainActor [weak self] in
+            await self?.refreshDetectedMedia()
+        }
+    }
+
+    /// A long-press on a video ALWAYS ends in visible feedback:
+    /// a saveable http(s) URL opens the add confirmation; a blob:
+    /// URL (MSE playback — a page-session handle, not a file) and
+    /// an unresolvable press get an explicit notice instead of
+    /// silence. Nothing is ever added silently or dropped silently.
+    private func handleVideoLongPress(url: String, title: String) {
+        guard !isPrivate, !showsStartPage, archiveSnapshot == nil else { return }
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("blob:") {
+            mediaNotice = "この動画は保存できません（blob:）"
+            return
+        }
+        let media = DetectedMedia(url: trimmed)
+        guard media.isHTTP else {
+            mediaNotice = "この動画は保存できませんでした（URLを取得できません）"
+            return
+        }
+        pendingLongPress = media
+    }
+
+    /// Collect script (run on demand via evaluateJavaScript):
+    /// resolves every video's source the same way the long-press
+    /// probe does, plus media-file anchor hrefs.
+    private static let mediaCollectScript = #"""
+    (function () {
+      var out = [];
+      var seen = {};
+      function push(u) {
+        if (!u) return;
+        var abs = u;
+        try { abs = new URL(u, document.baseURI).href; } catch (e) { return; }
+        if (seen[abs]) return;
+        seen[abs] = 1;
+        out.push(abs);
+      }
+      var videos = document.querySelectorAll('video');
+      for (var i = 0; i < videos.length; i++) {
+        var v = videos[i];
+        if (v.currentSrc) push(v.currentSrc);
+        var attr = v.getAttribute('src');
+        if (attr) push(attr);
+        var sources = v.querySelectorAll('source');
+        for (var j = 0; j < sources.length; j++) {
+          push(sources[j].getAttribute('src') || '');
+        }
+      }
+      var links = document.querySelectorAll('a[href]');
+      for (var k = 0; k < links.length; k++) {
+        var href = links[k].getAttribute('href') || '';
+        if (/\.(mp4|mov|m4v|webm)([?#]|$)/i.test(href)) push(href);
+      }
+      return JSON.stringify(out);
+    })()
+    """#
+
+    /// Probe script (injected into every frame at document end):
+    ///
+    /// Long-press: a touch held ~0.45s within 10pt on (or over) a
+    /// <video> resolves that video — the touch target itself, its
+    /// ancestors, a wrapped descendant, or the smallest video whose
+    /// rect contains the point (covering sibling overlays) — and
+    /// posts its currentSrc / src / <source src>. All listeners are
+    /// passive and never preventDefault, so taps, scrolling and the
+    /// native media controls are untouched; moving >10pt cancels.
+    ///
+    /// DOM changes: a MutationObserver debounced to ~1 post/s asks
+    /// the native side to re-collect (it throttles further).
+    private static let mediaProbeScript = #"""
+    (function () {
+      if (window.__sbMediaProbe) return;
+      window.__sbMediaProbe = true;
+      function post(message) {
+        try {
+          window.webkit.messageHandlers.snapMedia.postMessage(message);
+        } catch (e) {}
+      }
+      function videoURL(v) {
+        if (v.currentSrc) return v.currentSrc;
+        var attr = v.getAttribute('src');
+        if (attr) return v.src;
+        var source = v.querySelector('source[src]');
+        if (source) return source.src;
+        return '';
+      }
+      function findVideo(x, y, el) {
+        var node = el;
+        while (node && node !== document) {
+          if (node.tagName === 'VIDEO') return node;
+          node = node.parentElement;
+        }
+        if (el && el.querySelector) {
+          var inner = el.querySelector('video');
+          if (inner) return inner;
+        }
+        var videos = document.querySelectorAll('video');
+        var best = null;
+        var bestArea = Infinity;
+        for (var i = 0; i < videos.length; i++) {
+          var r = videos[i].getBoundingClientRect();
+          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+            var area = r.width * r.height;
+            if (area < bestArea) { bestArea = area; best = videos[i]; }
+          }
+        }
+        return best;
+      }
+      var timer = null;
+      var startX = 0;
+      var startY = 0;
+      var target = null;
+      function clearTimer() {
+        if (timer) { clearTimeout(timer); timer = null; }
+        target = null;
+      }
+      document.addEventListener('touchstart', function (e) {
+        clearTimer();
+        if (e.touches.length !== 1) return;
+        var touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        var el = document.elementFromPoint(startX, startY) || e.target;
+        var video = findVideo(startX, startY, el);
+        if (!video) return;
+        target = video;
+        timer = setTimeout(function () {
+          timer = null;
+          if (!target) return;
+          post({ type: 'longpress',
+                 url: videoURL(target) || '',
+                 title: document.title || '' });
+          target = null;
+        }, 450);
+      }, { passive: true, capture: true });
+      document.addEventListener('touchmove', function (e) {
+        if (!timer) return;
+        var touch = e.touches[0];
+        if (Math.abs(touch.clientX - startX) > 10 ||
+            Math.abs(touch.clientY - startY) > 10) {
+          clearTimer();
+        }
+      }, { passive: true, capture: true });
+      document.addEventListener('touchend', clearTimer,
+        { passive: true, capture: true });
+      document.addEventListener('touchcancel', clearTimer,
+        { passive: true, capture: true });
+      var pending = null;
+      function notifyChanged() {
+        if (pending) return;
+        pending = setTimeout(function () {
+          pending = null;
+          post({ type: 'changed' });
+        }, 1000);
+      }
+      if (window.MutationObserver && document.documentElement) {
+        var observer = new MutationObserver(function (mutations) {
+          for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].addedNodes.length ||
+                mutations[i].removedNodes.length) {
+              notifyChanged();
+              return;
+            }
+          }
+        });
+        observer.observe(document.documentElement,
+                         { childList: true, subtree: true });
+      }
+    })()
+    """#
 
     // MARK: - Archive display
 
@@ -545,6 +804,13 @@ extension BrowserTab: WKNavigationDelegate {
                     self.clearArchive()
                 }
             }
+            if url.scheme == "http" || url.scheme == "https" {
+                // New page: the previous page's media detections and
+                // any pending long-press no longer apply.
+                self.detectedMedia = []
+                self.pendingLongPress = nil
+                self.delayedProbeTask?.cancel()
+            }
         }
     }
 
@@ -554,9 +820,35 @@ extension BrowserTab: WKNavigationDelegate {
         let title = webView.title
         Task { @MainActor in
             self.capturePreview()
+            await self.refreshDetectedMedia()
+            self.scheduleDelayedProbe()
             guard let url, url.scheme == "http" || url.scheme == "https",
                   self.archiveSnapshot == nil, !self.showsStartPage else { return }
             self.onVisit?(title ?? url.host ?? url.absoluteString, url.absoluteString)
+        }
+    }
+}
+
+// MARK: - Media probe messages (v0.4.6)
+
+extension BrowserTab: WKScriptMessageHandler {
+    nonisolated func userContentController(_ userContentController: WKUserContentController,
+                                           didReceive message: WKScriptMessage) {
+        guard message.name == Self.mediaMessageName,
+              let body = message.body as? [String: Any],
+              let type = body["type"] as? String else { return }
+        switch type {
+        case "longpress":
+            let url = body["url"] as? String ?? ""
+            Task { @MainActor in
+                self.handleVideoLongPress(url: url, title: self.pageTitle)
+            }
+        case "changed":
+            Task { @MainActor in
+                self.scheduleProbeRefresh()
+            }
+        default:
+            break
         }
     }
 }
