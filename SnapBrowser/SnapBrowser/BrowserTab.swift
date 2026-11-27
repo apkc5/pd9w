@@ -1111,17 +1111,21 @@ extension BrowserTab: WKNavigationDelegate {
     /// (Types WebKit cannot display never reach here — they already
     /// became WKDownloads above. The realistic inline cases are PDF,
     /// plain text, and office files served with a displayable type.)
-    private static let documentExtensions: Set<String> = [
+    // nonisolated: these pure helpers are called from the
+    // nonisolated navigation-response delegate (v0.4.10 fix — as
+    // plain statics on the @MainActor class they were themselves
+    // main-actor-isolated and the call was a compile error).
+    nonisolated private static let documentExtensions: Set<String> = [
         "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
         "epub", "csv", "tsv", "rtf", "odt", "ods", "odp",
     ]
 
-    private static func isInlineDocument(url: URL, mimeType: String?) -> Bool {
+    nonisolated private static func isInlineDocument(url: URL, mimeType: String?) -> Bool {
         if mimeType?.lowercased() == "application/pdf" { return true }
         return documentExtensions.contains(url.pathExtension.lowercased())
     }
 
-    private static func documentName(url: URL, mimeType: String?) -> String {
+    nonisolated private static func documentName(url: URL, mimeType: String?) -> String {
         let last = url.lastPathComponent
         if !last.isEmpty, last != "/" { return last.removingPercentEncoding ?? last }
         if mimeType?.lowercased() == "application/pdf" { return "document.pdf" }
@@ -1140,15 +1144,11 @@ extension BrowserTab: WKNavigationDelegate {
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else { return }
         // startDownload only exists in completion-handler / async
-        // form — there is no synchronous variant.
+        // form — there is no synchronous variant. (In this SDK the
+        // handler's WKDownload is non-optional.)
         webView.startDownload(using: URLRequest(url: url)) { [weak self] download in
             Task { @MainActor in
-                guard let self else { return }
-                if let download {
-                    self.downloadHandler?(download)
-                } else {
-                    self.tabNotice = "ダウンロードを開始できませんでした"
-                }
+                self?.downloadHandler?(download)
             }
         }
     }
