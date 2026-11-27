@@ -164,6 +164,15 @@ private struct BrowserTabView: View {
     @FocusState private var addressFocused: Bool
     @State private var suggestions: [String] = []
     @State private var suggestTask: Task<Void, Never>?
+    /// Measured height of the suggestion panel's rows (v0.4.7). The
+    /// panel lives in an overlay on the address bar, whose layout
+    /// proposal is the bar's own size — left to itself the panel's
+    /// ScrollView collapsed to ~2 rows and everything below (the
+    /// remaining suggestions, the whole on-device section) sat
+    /// hidden under the fold. The rows' real height is measured and
+    /// fed back as an explicit frame height, capped relative to
+    /// the window height.
+    @State private var panelRowsHeight: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -176,7 +185,7 @@ private struct BrowserTabView: View {
                     // VStack row) so the web view is never resized —
                     // and reflown — while the user is typing.
                     if addressFocused {
-                        suggestionPanel
+                        suggestionPanel(containerHeight: geo.size.height)
                             .frame(width: geo.size.width)
                             .offset(y: 62)
                     }
@@ -293,7 +302,22 @@ private struct BrowserTabView: View {
                     addressFocused = false
                     tab.loadAddressBar()
                 }
-            if tab.isLoading {
+            if addressFocused && !tab.addressText.isEmpty {
+                // Clear button (v0.4.7): while the field is being
+                // edited and holds text, a × inside the pill's right
+                // end wipes it. The panel reacts through the usual
+                // addressText onChange (suggestions clear, the
+                // empty-query recent-history state returns). Outside
+                // editing the stop / reload buttons below keep the
+                // slot, untouched.
+                Button { tab.addressText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+            } else if tab.isLoading {
                 Button { tab.stop() } label: {
                     Image(systemName: "xmark")
                         .foregroundStyle(Theme.ink)
@@ -348,7 +372,7 @@ private struct BrowserTabView: View {
     /// opt-in prompt (while off), engine suggestions (while on), a
     /// find-in-page row, and on-device matches (bookmarks first, then
     /// history). With an empty field it lists recent history instead.
-    private var suggestionPanel: some View {
+    private func suggestionPanel(containerHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             if showSuggestPrompt {
                 suggestPromptRow
@@ -384,12 +408,33 @@ private struct BrowserTabView: View {
                         }
                     }
                 }
+                // Report the rows' true height (v0.4.7): inside a
+                // ScrollView the content is laid out unbounded, so
+                // this is the height the panel actually needs.
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { newHeight in
+                    panelRowsHeight = newHeight
+                }
             }
-            .frame(maxHeight: 360)
+            .frame(height: panelScrollHeight(containerHeight: containerHeight))
         }
         .background(Theme.paper)
         .overlay(alignment: .bottom) { Divider() }
         .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 6)
+    }
+
+    /// Height of the panel's scroll region (v0.4.7): the measured
+    /// rows height, capped so the whole panel — opt-in prompt row
+    /// included — stays within ~68% of the window height. Short
+    /// content keeps the panel short; it never stretches to the
+    /// cap. Before the first measurement lands, fall back to the
+    /// smaller of the old 360 cap and the same window-relative cap.
+    private func panelScrollHeight(containerHeight: CGFloat) -> CGFloat {
+        let promptAllowance: CGFloat = showSuggestPrompt ? 60 : 0
+        let cap = max(120, containerHeight * 0.68 - promptAllowance)
+        guard panelRowsHeight > 0 else { return min(360, cap) }
+        return min(panelRowsHeight, cap)
     }
 
     /// Brave's opt-in card, mirrored: suggestions stay OFF until the
