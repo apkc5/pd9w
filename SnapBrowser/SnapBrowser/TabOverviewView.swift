@@ -1,11 +1,29 @@
 import SwiftUI
 
-/// Tab overview as a GRID of small cards — the user's reference changed
-/// from the Brave app-switcher carousel to Chrome on iPad's tab grid:
-/// many tabs visible at once (4 columns on a full-screen iPad), each
-/// card a header (title + ×) over a wide-ish (4:3) preview, the current
-/// tab framed in cobalt, and a ＋ card at the end of the grid adding a
-/// tab. Layout inspiration only — no Chrome assets.
+/// Tab overview as a GRID of small cards, modelled on Chrome on
+/// iPad's tab screen: fixed-feeling cards (2 columns in a narrow
+/// floating window, 4 on a full-screen iPad), a round ＋ button at
+/// the bottom centre for a new tab, and a 「完了」 button at the
+/// bottom right to close — no ＋ card in the grid, no × in the
+/// header (closing happens via 完了 or by tapping a card). Each card
+/// keeps its header band (favicon tile + title + ×) over a preview,
+/// the current tab framed in cobalt. Layout inspiration only — no
+/// Chrome assets, and the ＋ is Cobalt, not Chrome blue.
+///
+/// v0.4.5 column-count post-mortem: v0.4.3/v0.4.4 used
+/// `GridItem(.adaptive(minimum: 170))`, which on the user's device
+/// collapsed to ONE full-width column in his ~380pt floating window.
+/// That was arithmetic, not a stale build (the 170 minimum was
+/// verified in the shipped source): two adaptive columns need
+/// 2×170 + 16 spacing = 356pt of content width, i.e. a window of at
+/// least 388pt once the grid's 16pt side padding is counted — his
+/// window is just under that, so adaptive legitimately computed one
+/// column and then stretched it to the full content width, and the
+/// portrait 3:4 preview made the single card fill the screen. The
+/// fix is to stop asking adaptive: the column count is decided
+/// explicitly from the container width (see columnCount(forWidth:)),
+/// and fixed flexible tracks mean a lone tab keeps its column width
+/// instead of stretching — exactly what Chrome's grid does.
 ///
 /// All metrics derive from the GeometryReader's container size (the
 /// window the view is actually in) — v0.4 removed every UIScreen-based
@@ -19,17 +37,29 @@ struct TabOverviewView: View {
     @ObservedObject var manager: BrowserModel
     @Environment(\.dismiss) private var dismiss
 
+    /// Column count from the container width — explicit, never
+    /// adaptive. Card width = (width − 32 padding − 16×(n−1) spacing) / n:
+    ///   ~380pt window → 2 cols × ~166pt    ~430pt → 2 × ~191pt
+    ///   ~520pt window → 2 cols × ~236pt    ~700pt → 3 × ~212pt
+    ///   ~900pt        → 4 cols × ~205pt    full iPad (1376pt) → 4 × ~324pt
+    /// Below 340pt (phone-width Slide Over) a single column of
+    /// readable cards beats two slivers.
+    static func columnCount(forWidth width: CGFloat) -> Int {
+        if width < 340 { return 1 }
+        if width < 560 { return 2 }
+        if width < 900 { return 3 }
+        return 4
+    }
+
     var body: some View {
         GeometryReader { geo in
             let container = geo.size
             // Header slot includes the top inset that clears the window
             // chrome overlaying the cover.
             let headerHeight: CGFloat = 76
-            // Adaptive columns: ~170pt minimum card width keeps 2
-            // columns even in a narrow portrait floating window
-            // (Chrome's iPad grid in a slim window — the user's second
-            // reference photo) and gives 4–5 columns full-screen.
-            let columns = [GridItem(.adaptive(minimum: 170), spacing: 16)]
+            let columns = Array(
+                repeating: GridItem(.flexible(), spacing: 16),
+                count: Self.columnCount(forWidth: container.width))
             // Preview aspect follows the container like Chrome's grid:
             // portrait windows get portrait (3:4) cards, landscape
             // windows get wide (4:3) cards. Previews are captured at
@@ -55,10 +85,10 @@ struct TabOverviewView: View {
                                         manager.closeTab(tab)
                                     })
                         }
-                        newTabCard(previewAspect: previewAspect)
                     }
                     .padding(16)
                 }
+                bottomBar
             }
             .frame(width: container.width, height: container.height)
         }
@@ -66,40 +96,43 @@ struct TabOverviewView: View {
         .onAppear { manager.captureAllPreviews() }
     }
 
-    // MARK: New tab card (end of the grid)
+    // MARK: Bottom bar (Chrome layout: round ＋ centre, 完了 right)
 
-    private func newTabCard(previewAspect: CGFloat) -> some View {
-        Button {
-            manager.newTab()
-            dismiss()
-        } label: {
-            VStack(spacing: 0) {
-                // Spacer row matching TabCard's header height so the
-                // card lines up with its neighbours in the grid row.
-                Color.clear
+    /// The round ＋ is a deliberate, single-screen exception to the
+    /// app's no-floating-buttons rule — Chrome's tab screen has it,
+    /// the user asked for Chrome's structure, and it lives in this
+    /// flush bottom bar rather than floating over content.
+    private var bottomBar: some View {
+        ZStack {
+            HStack {
+                Spacer()
+                Button("完了") { dismiss() }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Theme.cobalt)
                     .frame(height: 44)
-                VStack(spacing: 12) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 40, weight: .bold))
-                    Text("新しいタブ")
-                        .font(.headline)
-                }
-                .foregroundStyle(Theme.cobalt)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(previewAspect, contentMode: .fit)
+                    .padding(.horizontal, 8)
+                    .contentShape(Rectangle())
             }
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(Theme.cobalt.opacity(0.45),
-                                  style: StrokeStyle(lineWidth: 1.5, dash: [8, 6]))
-            )
+            Button {
+                manager.newTab()
+                dismiss()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.title3.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(Theme.cobalt))
+                    .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
+                    .contentShape(Circle())
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Theme.surface)
+        .overlay(alignment: .top) { Divider() }
     }
 
-    // MARK: Header
+    // MARK: Header (title only — closing lives in the bottom bar)
 
     private var header: some View {
         HStack(spacing: 10) {
@@ -110,13 +143,6 @@ struct TabOverviewView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.body.bold())
-                    .foregroundStyle(Theme.ink)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
         }
         .padding(.horizontal, 16)
         // Extra top padding: inside a fullScreenCover the iPadOS window
