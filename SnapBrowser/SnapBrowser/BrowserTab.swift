@@ -1139,8 +1139,18 @@ extension BrowserTab: WKNavigationDelegate {
         guard let url = currentDocumentURL ?? webView.url,
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else { return }
-        let download = webView.startDownload(using: URLRequest(url: url))
-        downloadHandler?(download)
+        // startDownload only exists in completion-handler / async
+        // form — there is no synchronous variant.
+        webView.startDownload(using: URLRequest(url: url)) { [weak self] download in
+            Task { @MainActor in
+                guard let self else { return }
+                if let download {
+                    self.downloadHandler?(download)
+                } else {
+                    self.tabNotice = "ダウンロードを開始できませんでした"
+                }
+            }
+        }
     }
 
     nonisolated func webView(_ webView: WKWebView,
