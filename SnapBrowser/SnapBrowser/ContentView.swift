@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @StateObject private var manager = BrowserModel()
@@ -89,6 +90,24 @@ struct ContentView: View {
             store.reload()
             manager.resolvePendingArchives(using: store)
         }
+        .onContinueUserActivity(TabTearOff.activityType) { activity in
+            handleTornOffTab(activity)
+        }
+    }
+
+    /// Receiving end of the tab-strip tear-off: a scene created for a
+    /// dragged-out tab lands here with the tab's URL (or archive
+    /// folder) in the activity and opens it as a tab in this scene.
+    private func handleTornOffTab(_ activity: NSUserActivity) {
+        if let folder = activity.userInfo?[TabTearOff.archiveFolderKey] as? String {
+            store.reload()
+            if let item = store.items.first(where: { $0.folderName == folder }) {
+                manager.openArchive(item: item, store: store)
+            }
+        } else if let urlString = activity.userInfo?[TabTearOff.urlKey] as? String,
+                  let url = URL(string: urlString) {
+            _ = manager.newTab(url: url)
+        }
     }
 
     private var currentPageForBookmark: (title: String, url: String)? {
@@ -125,10 +144,15 @@ private struct BrowserTabView: View {
     @State private var findQuery = ""
     @State private var findCount: Int?
     @State private var findMiss = false
+    @State private var stripFrame: CGRect = .zero
 
     var body: some View {
+        GeometryReader { geo in
         VStack(spacing: 0) {
             addressBar
+            if geo.size.width >= 700 {
+                tabStrip
+            }
             if let item = tab.archiveSnapshot {
                 archiveBanner(item)
             } else if tab.isPrivate {
@@ -153,6 +177,7 @@ private struct BrowserTabView: View {
                 findBar
             }
             toolbar
+        }
         }
         .background(Theme.paper)
         .alert("スナップ結果", isPresented: snapAlertBinding) {
@@ -181,11 +206,15 @@ private struct BrowserTabView: View {
                 Button { tab.stop() } label: {
                     Image(systemName: "xmark")
                         .foregroundStyle(Theme.ink)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
             } else if !tab.showsStartPage {
                 Button { tab.reload() } label: {
                     Image(systemName: "arrow.clockwise")
                         .foregroundStyle(Theme.ink)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
             }
         }
@@ -243,6 +272,74 @@ private struct BrowserTabView: View {
         .overlay(alignment: .bottom) { Divider() }
     }
 
+    // MARK: Tab strip (wide windows only, Brave-style tab bar)
+
+    /// Flush strip directly under the address bar, shown only when the
+    /// window is wide (≥700pt — full-screen / large floating windows on
+    /// iPad). Narrow windows keep the tab-count button + grid overview.
+    /// Order in the column: address bar → tab strip → archive/private
+    /// banner → progress → page, so the banners never fight the strip.
+    private var tabStrip: some View {
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(manager.tabs) { t in
+                        TabStripChip(tab: t,
+                                     isActive: t.id == manager.activeTabID,
+                                     stripFrame: stripFrame,
+                                     onSelect: { manager.selectTab(t) },
+                                     onClose: { manager.closeTab(t) },
+                                     onTearOff: { tearOff(t) })
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+            }
+            Button {
+                _ = manager.newTab()
+            } label: {
+                Image(systemName: "plus")
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+        }
+        .background(Theme.surface)
+        .overlay(alignment: .bottom) { Divider() }
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { stripFrame = proxy.frame(in: .global) }
+                    .onChange(of: proxy.frame(in: .global)) { _, frame in
+                        stripFrame = frame
+                    }
+            }
+        }
+    }
+
+    /// Tear-off: ask UIKit for a NEW scene carrying this tab. The
+    /// error handler is the only failure signal the API gives, so the
+    /// original tab is closed (move, not copy) by a work item that the
+    /// error handler cancels if activation fails.
+    private func tearOff(_ tab: BrowserTab) {
+        let activity = NSUserActivity(activityType: TabTearOff.activityType)
+        activity.title = "タブを新しいウィンドウで開く"
+        if let item = tab.archiveSnapshot {
+            activity.userInfo = [TabTearOff.archiveFolderKey: item.folderName]
+        } else if let urlString = tab.currentURLString {
+            activity.userInfo = [TabTearOff.urlKey: urlString]
+        } else {
+            return // start-page tab: nothing to carry over
+        }
+        let closeWork = DispatchWorkItem { manager.closeTab(tab) }
+        UIApplication.shared.requestSceneSessionActivation(
+            nil, userActivity: activity, options: nil
+        ) { error in
+            if error != nil { closeWork.cancel() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: closeWork)
+    }
+
     // MARK: Find bar (slim strip above the toolbar while searching)
 
     private var findBar: some View {
@@ -268,10 +365,14 @@ private struct BrowserTabView: View {
             Button { runFind(backwards: true) } label: {
                 Image(systemName: "chevron.up")
                     .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             Button { runFind(backwards: false) } label: {
                 Image(systemName: "chevron.down")
                     .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             Button("完了") {
                 findActive = false
@@ -280,6 +381,8 @@ private struct BrowserTabView: View {
                 findMiss = false
             }
             .foregroundStyle(Theme.cobalt)
+            .frame(height: 44)
+            .contentShape(Rectangle())
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -311,6 +414,8 @@ private struct BrowserTabView: View {
         HStack {
             Button { tab.goBack() } label: {
                 Image(systemName: "chevron.backward")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(!tab.canGoBack)
 
@@ -318,6 +423,8 @@ private struct BrowserTabView: View {
 
             Button { tab.goForward() } label: {
                 Image(systemName: "chevron.forward")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(!tab.canGoForward)
 
@@ -333,6 +440,8 @@ private struct BrowserTabView: View {
                         .font(.caption2.bold())
                 }
                 .foregroundStyle(Theme.ink)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
             }
             .disabled(tab.isSnapping || tab.showsStartPage || tab.archiveSnapshot != nil)
 
@@ -348,6 +457,8 @@ private struct BrowserTabView: View {
                         .font(.caption2.bold())
                         .foregroundStyle(Theme.ink)
                 }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
             }
 
             Spacer()
@@ -407,10 +518,12 @@ private struct BrowserTabView: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
         .background(Theme.surface)
         .overlay(alignment: .top) { Divider() }
     }
@@ -446,5 +559,104 @@ private struct BrowserTabView: View {
             lines.append(contentsOf: result.failures)
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - Tab tear-off (drag a strip tab out → new window)
+
+/// Shared keys for the tear-off NSUserActivity. The receiving scene
+/// (ContentView.onContinueUserActivity) opens a tab from these.
+enum TabTearOff {
+    static let activityType = "jp.anko.snapbrowser.openTab"
+    static let urlKey = "url"
+    static let archiveFolderKey = "archiveFolder"
+}
+
+/// One chip in the tab strip: letter tile / aperture + title + ×.
+/// The main area selects the tab (tap), the × closes it, and a drag
+/// that ends OUTSIDE the strip's frame tears the tab off into a new
+/// window (see BrowserTabView.tearOff). This is a gesture-based
+/// tear-off, not system drag & drop: the chip follows the finger
+/// vertically while dragging so the intent is visible.
+private struct TabStripChip: View {
+    @ObservedObject var tab: BrowserTab
+    let isActive: Bool
+    let stripFrame: CGRect
+    var onSelect: () -> Void
+    var onClose: () -> Void
+    var onTearOff: () -> Void
+
+    @State private var dragHeight: CGFloat = 0
+
+    var body: some View {
+        HStack(spacing: 2) {
+            HStack(spacing: 6) {
+                if tab.archiveSnapshot != nil {
+                    ApertureIcon(size: 14)
+                } else {
+                    LetterAvatar(text: tab.pageTitle.isEmpty ? tab.addressText : tab.pageTitle,
+                                 size: 20)
+                }
+                Text(chipTitle)
+                    .font(.caption.weight(isActive ? .bold : .regular))
+                    .foregroundStyle(isActive ? Theme.cobalt : Theme.ink)
+                    .lineLimit(1)
+                if tab.isPrivate {
+                    Image(systemName: "eye.slash")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { onSelect() }
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 10)
+        .frame(width: 200, height: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(isActive ? Theme.paper : Theme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(isActive ? Theme.cobalt : Theme.hairline,
+                              lineWidth: isActive ? 1.5 : 0.5)
+        )
+        .offset(y: dragHeight)
+        .gesture(dragGesture)
+    }
+
+    private var chipTitle: String {
+        if tab.showsStartPage { return "新しいタブ" }
+        if !tab.pageTitle.isEmpty { return tab.pageTitle }
+        if !tab.addressText.isEmpty { return tab.addressText }
+        return "新しいタブ"
+    }
+
+    private var canTearOff: Bool {
+        tab.archiveSnapshot != nil || tab.currentURLString != nil
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .global)
+            .onChanged { value in
+                dragHeight = value.translation.height
+            }
+            .onEnded { value in
+                dragHeight = 0
+                guard canTearOff, stripFrame != .zero else { return }
+                if !stripFrame.insetBy(dx: -6, dy: -6).contains(value.location) {
+                    onTearOff()
+                }
+            }
     }
 }

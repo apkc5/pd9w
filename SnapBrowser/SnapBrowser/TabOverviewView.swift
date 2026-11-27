@@ -25,10 +25,18 @@ struct TabOverviewView: View {
             // Header slot includes the top inset that clears the window
             // chrome overlaying the cover.
             let headerHeight: CGFloat = 76
-            // Adaptive columns: ~260pt minimum card width gives 4
-            // columns on a full-screen iPad and automatically fewer
-            // (3, then 2) as the window narrows.
-            let columns = [GridItem(.adaptive(minimum: 260), spacing: 16)]
+            // Adaptive columns: ~170pt minimum card width keeps 2
+            // columns even in a narrow portrait floating window
+            // (Chrome's iPad grid in a slim window — the user's second
+            // reference photo) and gives 4–5 columns full-screen.
+            let columns = [GridItem(.adaptive(minimum: 170), spacing: 16)]
+            // Preview aspect follows the container like Chrome's grid:
+            // portrait windows get portrait (3:4) cards, landscape
+            // windows get wide (4:3) cards. Previews are captured at
+            // the window's real size, so matching the frame to the
+            // container's orientation also reduces cropping.
+            let previewAspect: CGFloat = container.height > container.width
+                ? 3.0 / 4.0 : 4.0 / 3.0
 
             VStack(spacing: 0) {
                 header
@@ -38,6 +46,7 @@ struct TabOverviewView: View {
                         ForEach(manager.tabs) { tab in
                             TabCard(tab: tab,
                                     isActive: tab.id == manager.activeTabID,
+                                    previewAspect: previewAspect,
                                     onSelect: {
                                         manager.selectTab(tab)
                                         dismiss()
@@ -46,7 +55,7 @@ struct TabOverviewView: View {
                                         manager.closeTab(tab)
                                     })
                         }
-                        newTabCard
+                        newTabCard(previewAspect: previewAspect)
                     }
                     .padding(16)
                 }
@@ -59,7 +68,7 @@ struct TabOverviewView: View {
 
     // MARK: New tab card (end of the grid)
 
-    private var newTabCard: some View {
+    private func newTabCard(previewAspect: CGFloat) -> some View {
         Button {
             manager.newTab()
             dismiss()
@@ -77,7 +86,7 @@ struct TabOverviewView: View {
                 }
                 .foregroundStyle(Theme.cobalt)
                 .frame(maxWidth: .infinity)
-                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                .aspectRatio(previewAspect, contentMode: .fit)
             }
             .background(Theme.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -105,7 +114,8 @@ struct TabOverviewView: View {
                 Image(systemName: "xmark")
                     .font(.body.bold())
                     .foregroundStyle(Theme.ink)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
         }
         .padding(.horizontal, 16)
@@ -122,6 +132,7 @@ struct TabOverviewView: View {
 private struct TabCard: View {
     @ObservedObject var tab: BrowserTab
     let isActive: Bool
+    let previewAspect: CGFloat
     var onSelect: () -> Void
     var onClose: () -> Void
 
@@ -163,7 +174,8 @@ private struct TabCard: View {
                 Image(systemName: "xmark")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
         }
         .padding(.horizontal, 10)
@@ -198,9 +210,10 @@ private struct TabCard: View {
             }
         }
         .frame(maxWidth: .infinity)
-        // Wide-ish 4:3 preview window like the Chrome grid reference;
-        // the image fills it and is clipped (no letterboxing).
-        .aspectRatio(4.0 / 3.0, contentMode: .fit)
+        // Preview window follows the container's orientation (4:3
+        // landscape / 3:4 portrait, decided by the parent grid); the
+        // image fills it and is clipped (no letterboxing).
+        .aspectRatio(previewAspect, contentMode: .fit)
         .clipped()
     }
 }
