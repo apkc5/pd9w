@@ -56,7 +56,7 @@ struct SettingsView: View {
                 } header: {
                     Text("データ")
                 } footer: {
-                    Text("ブックマークとスナップ（ライブラリ）は削除されません。")
+                    Text("ブックマーク・スナップ（ライブラリ）・Playlistのダウンロードは削除されません。")
                 }
 
                 Section("情報") {

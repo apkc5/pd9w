@@ -8,6 +8,10 @@ struct BookmarksView: View {
     @ObservedObject var store: BookmarkStore
     var currentPage: () -> (title: String, url: String)?
     var onOpen: (String) -> Void
+    /// Playlist integration (v0.4.6): adds the bookmark to the
+    /// playlist, returning whether it was newly added. Rows only
+    /// offer it for media-looking URLs.
+    var onAddToPlaylist: ((Bookmark) -> Bool)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
@@ -22,7 +26,8 @@ struct BookmarksView: View {
         NavigationStack {
             Group {
                 if searchText.isEmpty {
-                    FolderContentsView(store: store, folderID: nil, onOpen: onOpen)
+                    FolderContentsView(store: store, folderID: nil, onOpen: onOpen,
+                                       onAddToPlaylist: onAddToPlaylist)
                 } else {
                     searchResults
                 }
@@ -94,7 +99,8 @@ struct BookmarksView: View {
                             subtitle: store.folderName(for: bookmark.folderID),
                             onOpen: onOpen,
                             onDelete: { store.deleteBookmark(bookmark) },
-                            onEdit: { editingBookmark = bookmark })
+                            onEdit: { editingBookmark = bookmark },
+                            onAddToPlaylist: playlistHandler(for: bookmark))
             }
         }
         .listStyle(.plain)
@@ -107,6 +113,17 @@ struct BookmarksView: View {
 
     private var noticeBinding: Binding<Bool> {
         Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
+    }
+
+    /// Row-ready Playlist handler (nil unless the bookmark's URL
+    /// looks like a media file); reports through the shared notice.
+    func playlistHandler(for bookmark: Bookmark) -> (() -> Void)? {
+        guard let onAddToPlaylist, PlaylistMedia.isMediaURL(bookmark.url) else { return nil }
+        return {
+            notice = onAddToPlaylist(bookmark)
+                ? "Playlistに追加しました"
+                : "すでにPlaylistにあります"
+        }
     }
 
     private func addCurrentPage() {
@@ -147,10 +164,12 @@ struct FolderContentsView: View {
     @ObservedObject var store: BookmarkStore
     let folderID: UUID?
     var onOpen: (String) -> Void
+    var onAddToPlaylist: ((Bookmark) -> Bool)?
 
     @State private var showNewFolder = false
     @State private var newFolderName = ""
     @State private var editingBookmark: Bookmark?
+    @State private var notice: String?
 
     var body: some View {
         List {
@@ -158,7 +177,8 @@ struct FolderContentsView: View {
                 Section {
                     ForEach(store.subfolders(of: folderID)) { folder in
                         NavigationLink {
-                            FolderContentsView(store: store, folderID: folder.id, onOpen: onOpen)
+                            FolderContentsView(store: store, folderID: folder.id, onOpen: onOpen,
+                                               onAddToPlaylist: onAddToPlaylist)
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "folder")
@@ -179,7 +199,8 @@ struct FolderContentsView: View {
                                 subtitle: nil,
                                 onOpen: onOpen,
                                 onDelete: { store.deleteBookmark(bookmark) },
-                                onEdit: { editingBookmark = bookmark })
+                                onEdit: { editingBookmark = bookmark },
+                                onAddToPlaylist: playlistHandler(for: bookmark))
                 }
             }
             if store.subfolders(of: folderID).isEmpty && store.bookmarks(in: folderID).isEmpty {
@@ -209,8 +230,26 @@ struct FolderContentsView: View {
             }
             Button("キャンセル", role: .cancel) {}
         }
+        .alert("ブックマーク", isPresented: noticeBinding) {
+            Button("OK", role: .cancel) { notice = nil }
+        } message: {
+            Text(notice ?? "")
+        }
         .sheet(item: $editingBookmark) { bookmark in
             EditBookmarkView(store: store, bookmark: bookmark)
+        }
+    }
+
+    private var noticeBinding: Binding<Bool> {
+        Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
+    }
+
+    private func playlistHandler(for bookmark: Bookmark) -> (() -> Void)? {
+        guard let onAddToPlaylist, PlaylistMedia.isMediaURL(bookmark.url) else { return nil }
+        return {
+            notice = onAddToPlaylist(bookmark)
+                ? "Playlistに追加しました"
+                : "すでにPlaylistにあります"
         }
     }
 }
@@ -223,6 +262,8 @@ struct BookmarkRow: View {
     var onOpen: (String) -> Void
     var onDelete: () -> Void
     var onEdit: () -> Void
+    /// Non-nil only for media-looking URLs (v0.4.6).
+    var onAddToPlaylist: (() -> Void)?
 
     var body: some View {
         Button {
@@ -253,10 +294,21 @@ struct BookmarkRow: View {
                 Label("編集", systemImage: "pencil")
             }
             .tint(Theme.cobalt)
+            if let onAddToPlaylist {
+                Button(action: onAddToPlaylist) {
+                    Label("Playlistに追加", systemImage: "video.badge.plus")
+                }
+                .tint(Theme.cobalt)
+            }
         }
         .contextMenu {
             Button(action: onEdit) {
                 Label("編集", systemImage: "pencil")
+            }
+            if let onAddToPlaylist {
+                Button(action: onAddToPlaylist) {
+                    Label("Playlistに追加", systemImage: "video.badge.plus")
+                }
             }
             Button(role: .destructive, action: onDelete) {
                 Label("削除", systemImage: "trash")
