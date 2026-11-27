@@ -120,6 +120,30 @@ final class BookmarkStore: ObservableObject {
         save()
     }
 
+    /// Edits a bookmark in place (title / URL / folder). The id and the
+    /// original addedAt (ADD_DATE) are preserved, and folder counts stay
+    /// correct because they are derived from the bookmarks array.
+    /// Returns false without changing anything when another bookmark
+    /// already uses the URL — same dedupe convention as addBookmark:
+    /// never silently merge.
+    @discardableResult
+    func updateBookmark(id: UUID, title: String, url: String, folderID: UUID?) -> Bool {
+        guard !url.isEmpty else { return false }
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return false }
+        guard !bookmarks.contains(where: { $0.id != id && $0.url == url }) else { return false }
+        bookmarks[index].title = title.isEmpty ? url : title
+        bookmarks[index].url = url
+        if let folderID { bookmarks[index].folderID = folderID }
+        save()
+        return true
+    }
+
+    /// Title of the bookmark that already uses `url`, excluding `id`
+    /// (used by the edit sheet to explain a refused save).
+    func conflictingBookmarkTitle(forURL url: String, excluding id: UUID) -> String? {
+        bookmarks.first { $0.id != id && $0.url == url }?.title
+    }
+
     private func findOrCreateFolder(name: String, parentID: UUID?) -> UUID {
         if let existing = folders.first(where: { $0.parentID == parentID && $0.name == name }) {
             return existing.id
