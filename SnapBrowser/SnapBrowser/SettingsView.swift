@@ -54,6 +54,18 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("ホーム画面のペット", selection: $settings.homePet) {
+                        ForEach(HomePet.allCases) { pet in
+                            Text(pet.title).tag(pet)
+                        }
+                    }
+                } header: {
+                    Text("ホーム画面")
+                } footer: {
+                    Text("スタートページの下端を歩く小さな装飾です。素材クレジット — 猫: cez02（OpenGameArt、CC-BY 4.0）／犬: kirard（OpenGameArt、CC0）／あひる: Drummyfish（Wikimedia Commons、CC0）／ペンギン: segel（OpenGameArt、CC0）。")
+                }
+
+                Section {
                     Button("履歴を削除") { confirmClear = .history }
                     Button("Cookieとサイトデータを削除") { confirmClear = .websiteData }
                     Button("すべての閲覧データを削除", role: .destructive) { confirmClear = .all }

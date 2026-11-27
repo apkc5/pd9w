@@ -36,6 +36,19 @@ import SwiftUI
 struct TabOverviewView: View {
     @ObservedObject var manager: BrowserModel
     @Environment(\.dismiss) private var dismiss
+    /// Tab search (v0.4.9): filters the grid by title / URL,
+    /// case-insensitive substring — same rule as the other searches.
+    @State private var query = ""
+
+    private var visibleTabs: [BrowserTab] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return manager.tabs }
+        return manager.tabs.filter { tab in
+            tab.pageTitle.lowercased().contains(q)
+                || tab.addressText.lowercased().contains(q)
+                || (tab.currentURLString?.lowercased().contains(q) ?? false)
+        }
+    }
 
     /// Column count from the container width — explicit, never
     /// adaptive. Card width = (width − 32 padding − 16×(n−1) spacing) / n:
@@ -71,9 +84,17 @@ struct TabOverviewView: View {
             VStack(spacing: 0) {
                 header
                     .frame(height: headerHeight)
+                searchField
                 ScrollView {
+                    if visibleTabs.isEmpty {
+                        Text("「\(query)」に一致するタブがありません")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    }
                     LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(manager.tabs) { tab in
+                        ForEach(visibleTabs) { tab in
                             TabCard(tab: tab,
                                     isActive: tab.id == manager.activeTabID,
                                     previewAspect: previewAspect,
@@ -94,6 +115,36 @@ struct TabOverviewView: View {
         }
         .background(Theme.paper)
         .onAppear { manager.captureAllPreviews() }
+    }
+
+    // MARK: Search field (v0.4.9)
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            TextField("タブを検索", text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Capsule().fill(Theme.paper))
+        .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Theme.surface)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     // MARK: Bottom bar (Chrome layout: round ＋ centre, 完了 right)

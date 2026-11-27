@@ -17,15 +17,49 @@ final class BrowserModel: ObservableObject {
     let history = HistoryStore()
     let playlist = PlaylistStore()
     let settings = AppSettings()
+    /// File downloads handed over by tabs (v0.4.9).
+    let downloads = DownloadStore()
+
+    /// Set by ContentView so closed archive tabs can be restored
+    /// and tear-offs can resolve (the store lives in the view tree).
+    weak var snapshotStore: SnapshotStore?
 
     private static let sessionKey = "session.tabs.v2"
+    private static let closedTabsKey = "session.closedTabs.v1"
     private var didResolveArchives = false
+
+    // MARK: - Closed tabs (v0.4.9)
+
+    struct ClosedTab: Codable {
+        var title: String
+        var url: String?
+        var archiveFolder: String?
+    }
+
+    /// Most-recent-first stack of closed tabs (max 20), persisted so
+    /// Cmd+Shift+T also works after a relaunch. Private tabs are
+    /// never recorded — restoring one would leak its URL.
+    @Published private(set) var closedTabs: [ClosedTab] = [] {
+        didSet {
+            if let data = try? JSONEncoder().encode(closedTabs) {
+                UserDefaults.standard.set(data, forKey: Self.closedTabsKey)
+            }
+        }
+    }
+
+    /// Monotonic counter bumped when a keyboard shortcut asks the
+    /// active tab's view to focus the address bar (Cmd+L).
+    @Published var addressFocusRequest: Int = 0
 
     var activeTab: BrowserTab {
         tabs.first { $0.id == activeTabID } ?? tabs[0]
     }
 
     init() {
+        if let data = UserDefaults.standard.data(forKey: Self.closedTabsKey),
+           let decoded = try? JSONDecoder().decode([ClosedTab].self, from: data) {
+            closedTabs = decoded
+        }
         restoreSession()
         if tabs.isEmpty {
             let tab = makeTab()
@@ -42,6 +76,14 @@ final class BrowserModel: ObservableObject {
             guard let self, let tab, !tab.isPrivate else { return }
             self.history.record(title: title, url: url)
             self.persistSession()
+        }
+        // window.open / target=_blank / context-menu "open in new
+        // tab" all land here (v0.4.9).
+        tab.onOpenInNewTab = { [weak self] url in
+            self?.newTab(url: url)
+        }
+        tab.downloadHandler = { [weak self] download in
+            self?.downloads.attach(download)
         }
         return tab
     }
@@ -71,6 +113,7 @@ final class BrowserModel: ObservableObject {
     func closeTab(_ tab: BrowserTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
         let wasActive = tab.id == activeTabID
+        recordClosedTab(tab)
         tab.teardown()
         tabs.remove(at: index)
         if tabs.isEmpty {
@@ -88,6 +131,55 @@ final class BrowserModel: ObservableObject {
         activeTab.capturePreview()
         activeTabID = tab.id
         persistSession()
+    }
+
+    // MARK: - Closed-tab restore + tab cycling (v0.4.9)
+
+    private func recordClosedTab(_ tab: BrowserTab) {
+        guard !tab.isPrivate else { return }
+        if let snapshot = tab.archiveSnapshot {
+            closedTabs.insert(ClosedTab(title: snapshot.title,
+                                        url: nil,
+                                        archiveFolder: snapshot.folderName), at: 0)
+        } else if !tab.showsStartPage, let url = tab.webView.url?.absoluteString {
+            let title = tab.pageTitle.isEmpty ? url : tab.pageTitle
+            closedTabs.insert(ClosedTab(title: title, url: url, archiveFolder: nil), at: 0)
+        } else {
+            return // a blank start-page tab leaves nothing to restore
+        }
+        if closedTabs.count > 20 {
+            closedTabs.removeLast(closedTabs.count - 20)
+        }
+    }
+
+    /// Reopens the most recently closed tab as a normal tab.
+    func restoreClosedTab() {
+        guard let closed = closedTabs.first else { return }
+        closedTabs.removeFirst()
+        if let folder = closed.archiveFolder {
+            if let store = snapshotStore,
+               let item = store.items.first(where: { $0.folderName == folder }) {
+                openArchive(item: item, store: store)
+            } else if let url = closed.url, let url = URL(string: url) {
+                newTab(url: url)
+            } else {
+                newTab()
+            }
+        } else if let urlString = closed.url, let url = URL(string: urlString) {
+            newTab(url: url)
+        } else {
+            newTab()
+        }
+    }
+
+    func selectNextTab() { cycleTab(by: 1) }
+    func selectPreviousTab() { cycleTab(by: -1) }
+
+    private func cycleTab(by delta: Int) {
+        guard tabs.count > 1,
+              let index = tabs.firstIndex(where: { $0.id == activeTabID }) else { return }
+        let next = tabs[(index + delta + tabs.count) % tabs.count]
+        selectTab(next)
     }
 
     func captureAllPreviews() {
