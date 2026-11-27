@@ -233,6 +233,19 @@ private struct BrowserTabView: View {
         }
         }
         .background(Theme.paper)
+        // Keyboard (v0.4.7): the browser chrome must never be
+        // pushed up or shrunk by the keyboard's safe area. With a
+        // floating keyboard the whole layout used to jump the
+        // moment the keyboard opened, reflowing the page behind
+        // it. Ignoring the keyboard safe area on the browser
+        // screen's root keeps the address bar, tab strip and
+        // WebView at exactly the same position and size whether
+        // the keyboard is up or down; the suggestion panel stays
+        // an overlay (it may overlap the keyboard) and its height
+        // cap keeps using the full window height. Sheets with
+        // their own text fields are separate presentations and
+        // keep the standard avoidance.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
