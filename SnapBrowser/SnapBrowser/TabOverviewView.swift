@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Tab overview as a GRID of small cards, modelled on Chrome on
 /// iPad's tab screen: fixed-feeling cards (2 columns in a narrow
@@ -39,6 +40,16 @@ struct TabOverviewView: View {
     /// Tab search (v0.4.9): filters the grid by title / URL,
     /// case-insensitive substring — same rule as the other searches.
     @State private var query = ""
+    /// Card drag-reorder (v0.4.10): the tab currently being dragged,
+    /// for the dimmed-source-card effect and the drop delegates.
+    @State private var draggingTabID: UUID?
+
+    /// Reorder is only offered on the full, unfiltered list:
+    /// reordering a filtered subset would move cards the user can't
+    /// see and scramble the real order, so searching disables it.
+    private var isSearching: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var visibleTabs: [BrowserTab] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -105,16 +116,35 @@ struct TabOverviewView: View {
                                     onClose: {
                                         manager.closeTab(tab)
                                     })
+                                // The dragged card dims; the OTHER
+                                // cards slide aside live as the drag
+                                // crosses them (the drop delegate
+                                // reorders the model mid-drag), which
+                                // is the insertion feedback.
+                                .opacity(draggingTabID == tab.id ? 0.35 : 1)
+                                .tabReorderDragDrop(
+                                    enabled: !isSearching,
+                                    tab: tab,
+                                    manager: manager,
+                                    draggingID: $draggingTabID)
                         }
                     }
                     .padding(16)
+                    // Drops that land on grid gaps (not on a card)
+                    // still end the drag cleanly.
+                    .onDrop(of: [.text],
+                            delegate: TabGridCatchAllDropDelegate(draggingID: $draggingTabID))
                 }
                 bottomBar
             }
             .frame(width: container.width, height: container.height)
         }
         .background(Theme.paper)
-        .onAppear { manager.captureAllPreviews() }
+        .onAppear {
+            draggingTabID = nil
+            manager.captureAllPreviews()
+        }
+        .onChange(of: query) { _ in draggingTabID = nil }
     }
 
     // MARK: Search field (v0.4.9)
@@ -292,5 +322,84 @@ private struct TabCard: View {
         // image fills it and is clipped (no letterboxing).
         .aspectRatio(previewAspect, contentMode: .fit)
         .clipped()
+    }
+}
+
+// MARK: - Card drag-reorder (v0.4.10)
+
+/// Per-card drop target. The reorder happens LIVE in dropEntered —
+/// as the dragged card crosses a target, the model moves the dragged
+/// tab to the target's slot and the grid animates the other cards
+/// out of the way, so the insertion point is always visible. The
+/// indices are recomputed inside the MainActor hop at execution
+/// time (never captured at event time), so a burst of dropEntered
+/// events from a fast drag still converges on the pointer's card.
+/// iOS's drag interaction itself starts on long-press, which is
+/// what keeps plain taps (select) and the × button unaffected.
+private struct TabReorderDropDelegate: DropDelegate {
+    let target: BrowserTab
+    let manager: BrowserModel
+    @Binding var draggingID: UUID?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging = draggingID, dragging != target.id else { return }
+        let targetID = target.id
+        Task { @MainActor in
+            guard let from = manager.tabs.firstIndex(where: { $0.id == dragging }),
+                  let to = manager.tabs.firstIndex(where: { $0.id == targetID }),
+                  from != to else { return }
+            withAnimation(.easeInOut(duration: 0.18)) {
+                manager.moveTab(fromIndex: from, toIndex: to)
+            }
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingID = nil
+        return true
+    }
+}
+
+/// Catch-all for drops that land on the grid's gaps rather than on
+/// a card: just end the drag state cleanly.
+private struct TabGridCatchAllDropDelegate: DropDelegate {
+    @Binding var draggingID: UUID?
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingID = nil
+        return true
+    }
+}
+
+private extension View {
+    /// Attaches drag-reorder only when `enabled` (i.e. the grid is
+    /// not being search-filtered). A disabled card is a plain card:
+    /// tap selects, × closes, exactly as before.
+    @ViewBuilder
+    func tabReorderDragDrop(enabled: Bool,
+                            tab: BrowserTab,
+                            manager: BrowserModel,
+                            draggingID: Binding<UUID?>) -> some View {
+        if enabled {
+            self
+                .onDrag {
+                    draggingID.wrappedValue = tab.id
+                    return NSItemProvider(object: tab.id.uuidString as NSString)
+                }
+                .onDrop(of: [.text],
+                        delegate: TabReorderDropDelegate(target: tab,
+                                                         manager: manager,
+                                                         draggingID: draggingID))
+        } else {
+            self
+        }
     }
 }

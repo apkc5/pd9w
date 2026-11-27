@@ -370,6 +370,15 @@ private struct BrowserTabView: View {
                 tab.tabNotice = nil
             }
         }
+        // Download start / completion / failure (v0.4.10): a
+        // download is no longer silent — the toast says what
+        // happened, and the file is in ⋯ → ダウンロード.
+        .onChange(of: manager.downloadNotice) { notice in
+            if let notice {
+                showToast(notice)
+                manager.downloadNotice = nil
+            }
+        }
         .onChange(of: manager.addressFocusRequest) { _ in
             addressFocused = true
         }
@@ -1117,6 +1126,16 @@ private struct BrowserTabView: View {
                         Label("共有…", systemImage: "square.and.arrow.up")
                     }
                     .disabled(tab.showsStartPage)
+                    // Shown only while the tab displays a document
+                    // inline (a PDF link opens in the viewer instead
+                    // of downloading — v0.4.10 gives it a save path).
+                    if tab.currentDocumentName != nil {
+                        Button {
+                            tab.downloadCurrentDocument()
+                        } label: {
+                            Label("このファイルをダウンロード", systemImage: "arrow.down.doc")
+                        }
+                    }
                     Button {
                         findActive = true
                     } label: {
@@ -1368,6 +1387,23 @@ private struct TabStripChip: View {
                 radius: 8, x: 0, y: 4)
         .zIndex(isDragging ? 10 : 0)
         .gesture(tearOffGesture)
+        // Drag-state hygiene (v0.4.10): the offset/scale/zIndex above
+        // were previously reset ONLY in the gesture's onEnded. When
+        // the sequenced gesture is CANCELLED instead — the strip's
+        // ScrollView reclaiming the touch, the chip being rebuilt
+        // mid-drag — onEnded never runs, and the chip kept its last
+        // dragOffset at zIndex 10 indefinitely: rendered shifted on
+        // top of its neighbours with its × floating over the next
+        // chip (the user's screenshot). Disappearing — and
+        // (re)appearing — always starts from a clean drag state.
+        .onDisappear {
+            dragOffset = .zero
+            isDragging = false
+        }
+        .onAppear {
+            dragOffset = .zero
+            isDragging = false
+        }
         .contextMenu {
             Button {
                 onTearOff()

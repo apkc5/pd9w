@@ -27,8 +27,25 @@ final class DownloadStore: NSObject, ObservableObject {
     /// Transient progress fractions (0...1) per item, not persisted.
     @Published private(set) var progress: [UUID: Double] = [:]
 
+    /// User-visible lifecycle notices (v0.4.10): start / completion /
+    /// failure. Until v0.4.9 a download ran completely silently —
+    /// nothing on screen changed when one started or finished, so a
+    /// working download still read as 「できない」. BrowserModel
+    /// forwards these to the toast.
+    var onNotice: ((String) -> Void)?
+
     private let fileManager = FileManager.default
     private var progressObservations: [UUID: NSKeyValueObservation] = [:]
+
+    /// In-flight manual (blob:) transfers, keyed by item id.
+    var manualTransfers: [UUID: ManualTransfer] = [:]
+
+    struct ManualTransfer {
+        var stagingURL: URL
+        var handle: FileHandle
+        var received: Int64
+        var expected: Int64?
+    }
 
     var directoryURL: URL {
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -43,6 +60,13 @@ final class DownloadStore: NSObject, ObservableObject {
     }
 
     private func load() {
+        // Leftover blob-bridge staging files from a killed session
+        // can never be resumed; clear them out.
+        if let names = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) {
+            for name in names where name.hasPrefix(".partial-") {
+                try? fileManager.removeItem(at: directoryURL.appendingPathComponent(name))
+            }
+        }
         guard let data = try? Data(contentsOf: indexURL),
               let decoded = try? JSONDecoder.snapshotDecoder.decode([DownloadItem].self, from: data)
         else { return }
@@ -86,6 +110,7 @@ final class DownloadStore: NSObject, ObservableObject {
             createdAt: Date())
         items.insert(item, at: 0)
         persist()
+        onNotice?("ダウンロードを開始しました：\(item.fileName)")
         download.delegate = self
         // WKDownload exposes a Foundation Progress; observe it for
         // the list UI (fraction + total unit count).
@@ -140,15 +165,7 @@ extension DownloadStore: WKDownloadDelegate {
         }
         // De-duplicate the destination name the way desktop browsers
         // do: name.ext, name 2.ext, name 3.ext …
-        var candidate = suggestedFilename
-        var counter = 2
-        while fileManager.fileExists(atPath: directoryURL.appendingPathComponent(candidate).path) {
-            let ns = suggestedFilename as NSString
-            let ext = ns.pathExtension
-            let base = ns.deletingPathExtension
-            candidate = ext.isEmpty ? "\(base) \(counter)" : "\(base) \(counter).\(ext)"
-            counter += 1
-        }
+        let candidate = uniqueFileName(suggestedFilename)
         let destination = directoryURL.appendingPathComponent(candidate)
         // The item created in attach() carries the request's file
         // name; align it with the (possibly de-duplicated)
@@ -179,6 +196,7 @@ extension DownloadStore: WKDownloadDelegate {
             progress[item.id] = nil
             progressObservations[item.id] = nil
             persist()
+            onNotice?("ダウンロードが完了しました：\(item.fileName)")
         }
     }
 
@@ -194,7 +212,115 @@ extension DownloadStore: WKDownloadDelegate {
             progress[item.id] = nil
             progressObservations[item.id] = nil
             persist()
+            onNotice?("ダウンロードに失敗しました：\(item.fileName)")
         }
+    }
+}
+
+// MARK: - Manual downloads (blob: bridge, v0.4.10)
+
+extension DownloadStore {
+    /// name.ext → name 2.ext → name 3.ext … (shared by WKDownload
+    /// destinations and manual downloads).
+    private func uniqueFileName(_ suggested: String) -> String {
+        var candidate = suggested
+        var counter = 2
+        while fileManager.fileExists(atPath: directoryURL.appendingPathComponent(candidate).path) {
+            let ns = suggested as NSString
+            let ext = ns.pathExtension
+            let base = ns.deletingPathExtension
+            candidate = ext.isEmpty ? "\(base) \(counter)" : "\(base) \(counter).\(ext)"
+            counter += 1
+        }
+        return candidate
+    }
+
+    /// Starts a download whose bytes arrive from the page itself
+    /// (the blob: bridge in BrowserTab). Chunks are appended to a
+    /// staging file, so memory stays flat at any file size.
+    func beginManualDownload(fileName: String, sourceURL: String?, totalBytes: Int64?) -> UUID {
+        // The name comes from the page (a download attribute); never
+        // let it carry path components.
+        let safeName = (fileName as NSString).lastPathComponent
+        let item = DownloadItem(
+            id: UUID(),
+            fileName: safeName.isEmpty ? "download" : safeName,
+            sourceURL: sourceURL,
+            state: .downloading,
+            totalBytes: totalBytes,
+            errorMessage: nil,
+            createdAt: Date())
+        items.insert(item, at: 0)
+        persist()
+        onNotice?("ダウンロードを開始しました：\(item.fileName)")
+        do {
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            let staging = directoryURL.appendingPathComponent(".partial-\(item.id.uuidString)")
+            fileManager.createFile(atPath: staging.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: staging)
+            manualTransfers[item.id] = ManualTransfer(stagingURL: staging,
+                                                      handle: handle,
+                                                      received: 0,
+                                                      expected: totalBytes)
+        } catch {
+            failManualDownload(id: item.id, message: "保存を開始できませんでした")
+        }
+        return item.id
+    }
+
+    func appendManualChunk(id: UUID, data: Data) {
+        guard var transfer = manualTransfers[id] else { return }
+        do {
+            try transfer.handle.write(contentsOf: data)
+        } catch {
+            failManualDownload(id: id, message: "書き込みに失敗しました")
+            return
+        }
+        transfer.received += Int64(data.count)
+        manualTransfers[id] = transfer
+        if let expected = transfer.expected, expected > 0 {
+            progress[id] = Double(transfer.received) / Double(expected)
+        }
+    }
+
+    func finishManualDownload(id: UUID) {
+        guard let transfer = manualTransfers.removeValue(forKey: id) else { return }
+        try? transfer.handle.close()
+        guard let index = items.firstIndex(where: { $0.id == id }) else {
+            try? fileManager.removeItem(at: transfer.stagingURL)
+            return
+        }
+        let finalName = uniqueFileName(items[index].fileName)
+        do {
+            try fileManager.moveItem(at: transfer.stagingURL,
+                                     to: directoryURL.appendingPathComponent(finalName))
+            items[index].fileName = finalName
+            items[index].state = .completed
+            items[index].totalBytes = transfer.received
+            progress[id] = nil
+            persist()
+            onNotice?("ダウンロードが完了しました：\(finalName)")
+        } catch {
+            items[index].state = .failed
+            items[index].errorMessage = "保存に失敗しました"
+            progress[id] = nil
+            persist()
+            onNotice?("ダウンロードに失敗しました：\(items[index].fileName)")
+        }
+    }
+
+    func failManualDownload(id: UUID, message: String) {
+        if let transfer = manualTransfers.removeValue(forKey: id) {
+            try? transfer.handle.close()
+            try? fileManager.removeItem(at: transfer.stagingURL)
+        }
+        guard let index = items.firstIndex(where: { $0.id == id }),
+              items[index].state == .downloading else { return }
+        items[index].state = .failed
+        items[index].errorMessage = message
+        progress[id] = nil
+        persist()
+        onNotice?("ダウンロードに失敗しました：\(items[index].fileName)")
     }
 }
 
