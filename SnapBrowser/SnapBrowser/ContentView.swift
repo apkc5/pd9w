@@ -282,7 +282,7 @@ private struct BrowserTabView: View {
     private var tabStrip: some View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(manager.tabs) { t in
                         TabStripChip(tab: t,
                                      isActive: t.id == manager.activeTabID,
@@ -292,15 +292,16 @@ private struct BrowserTabView: View {
                                      onTearOff: { tearOff(t) })
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
             }
             Button {
                 _ = manager.newTab()
             } label: {
                 Image(systemName: "plus")
+                    .font(.caption.bold())
                     .foregroundStyle(Theme.ink)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 32)
                     .contentShape(Rectangle())
             }
         }
@@ -573,11 +574,19 @@ enum TabTearOff {
 }
 
 /// One chip in the tab strip: letter tile / aperture + title + ×.
-/// The main area selects the tab (tap), the × closes it, and a drag
-/// that ends OUTSIDE the strip's frame tears the tab off into a new
-/// window (see BrowserTabView.tearOff). This is a gesture-based
-/// tear-off, not system drag & drop: the chip follows the finger
-/// vertically while dragging so the intent is visible.
+/// The main area selects the tab (tap), the × closes it, and a
+/// LONG-PRESS-initiated drag that ends well OUTSIDE the strip's frame
+/// tears the tab off into a new window (see BrowserTabView.tearOff).
+/// v0.4.3 used a plain DragGesture on the chip, which the strip's
+/// horizontal ScrollView almost always claimed first — the chip just
+/// scrolled inside the strip and the tear-off never fired. The
+/// long-press gate (finger held still ~0.3s) means a plain swipe
+/// still scrolls the strip, while a held-then-moved finger belongs
+/// to the chip: it visibly lifts (offset + scale + shadow) and
+/// follows the finger in global coordinates. A long-press context
+/// menu with 「新しいウィンドウで開く」 is kept as a fallback path
+/// to the same tearOff flow. This is a gesture-based tear-off, not
+/// system drag & drop.
 private struct TabStripChip: View {
     @ObservedObject var tab: BrowserTab
     let isActive: Bool
@@ -586,19 +595,20 @@ private struct TabStripChip: View {
     var onClose: () -> Void
     var onTearOff: () -> Void
 
-    @State private var dragHeight: CGFloat = 0
+    @State private var dragOffset: CGSize = .zero
+    @State private var isDragging = false
 
     var body: some View {
         HStack(spacing: 2) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 if tab.archiveSnapshot != nil {
-                    ApertureIcon(size: 14)
+                    ApertureIcon(size: 12)
                 } else {
                     LetterAvatar(text: tab.pageTitle.isEmpty ? tab.addressText : tab.pageTitle,
-                                 size: 20)
+                                 size: 16)
                 }
                 Text(chipTitle)
-                    .font(.caption.weight(isActive ? .bold : .regular))
+                    .font(.caption2.weight(isActive ? .bold : .regular))
                     .foregroundStyle(isActive ? Theme.cobalt : Theme.ink)
                     .lineLimit(1)
                 if tab.isPrivate {
@@ -615,24 +625,40 @@ private struct TabStripChip: View {
                 Image(systemName: "xmark")
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary)
-                    .frame(width: 40, height: 44)
+                    // Visual glyph stays tiny; the hit frame is wider
+                    // than the glyph (36pt) while matching the compact
+                    // strip height (32pt).
+                    .frame(width: 36, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
-        .padding(.leading, 10)
-        .frame(width: 200, height: 44)
+        .padding(.leading, 8)
+        .frame(width: 180, height: 32)
         .background(
-            RoundedRectangle(cornerRadius: 9)
+            RoundedRectangle(cornerRadius: 7)
                 .fill(isActive ? Theme.paper : Theme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 9)
+            RoundedRectangle(cornerRadius: 7)
                 .strokeBorder(isActive ? Theme.cobalt : Theme.hairline,
                               lineWidth: isActive ? 1.5 : 0.5)
         )
-        .offset(y: dragHeight)
-        .gesture(dragGesture)
+        .offset(dragOffset)
+        .scaleEffect(isDragging ? 1.05 : 1)
+        .opacity(isDragging ? 0.92 : 1)
+        .shadow(color: .black.opacity(isDragging ? 0.3 : 0),
+                radius: 8, x: 0, y: 4)
+        .zIndex(isDragging ? 10 : 0)
+        .gesture(tearOffGesture)
+        .contextMenu {
+            Button {
+                onTearOff()
+            } label: {
+                Label("新しいウィンドウで開く", systemImage: "macwindow.badge.plus")
+            }
+            .disabled(!canTearOff)
+        }
     }
 
     private var chipTitle: String {
@@ -646,17 +672,36 @@ private struct TabStripChip: View {
         tab.archiveSnapshot != nil || tab.currentURLString != nil
     }
 
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 24, coordinateSpace: .global)
+    /// Long-press (≈0.3s, finger held still) sequenced into a drag.
+    /// The hold is what separates tear-off from strip scrolling: a
+    /// moving finger scrolls the ScrollView as before, a held finger
+    /// "picks up" the chip. The drag is tracked in global coordinates
+    /// so the release test can compare against the strip's global
+    /// frame. Release counts as "out" only when the pointer is at
+    /// least 40pt beyond the strip frame in some direction (usually
+    /// downward into the page) — anything closer snaps back.
+    private var tearOffGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.3)
+            .sequenced(before: DragGesture(minimumDistance: 0,
+                                            coordinateSpace: .global))
             .onChanged { value in
-                dragHeight = value.translation.height
+                if case .second(true, let drag?) = value {
+                    isDragging = true
+                    dragOffset = drag.translation
+                }
             }
             .onEnded { value in
-                dragHeight = 0
-                guard canTearOff, stripFrame != .zero else { return }
-                if !stripFrame.insetBy(dx: -6, dy: -6).contains(value.location) {
-                    onTearOff()
+                let releasedOutside: Bool = {
+                    guard case .second(true, let drag?) = value,
+                          canTearOff, stripFrame != .zero else { return false }
+                    return !stripFrame.insetBy(dx: -40, dy: -40)
+                        .contains(drag.location)
+                }()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    dragOffset = .zero
+                    isDragging = false
                 }
+                if releasedOutside { onTearOff() }
             }
     }
 }
