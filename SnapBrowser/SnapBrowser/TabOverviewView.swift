@@ -1,45 +1,92 @@
 import SwiftUI
 
-/// Brave-style tab overview: large preview cards in a grid (2 columns on
-/// iPhone, 3+ across on iPad), each with a title header and a × close
-/// button, the current tab framed in cobalt, and a ＋ new-tab button at
-/// the bottom centre. Layout inspiration only — no Brave assets.
+/// Tab overview as a horizontal carousel of LARGE cards, app-switcher
+/// style (the user's Brave-on-iPad reference photo): each card is most of
+/// the screen, cards snap one-by-one as you swipe sideways, the current
+/// tab is framed in cobalt, and a ＋ card at the end of the row adds a
+/// tab. Layout inspiration only — no Brave assets.
 struct TabOverviewView: View {
     @ObservedObject var manager: BrowserModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(manager.tabs) { tab in
-                        TabCard(tab: tab,
-                                isActive: tab.id == manager.activeTabID,
-                                onSelect: {
-                                    manager.selectTab(tab)
-                                    dismiss()
-                                },
-                                onClose: {
-                                    manager.closeTab(tab)
-                                })
-                    }
-                }
-                .padding(16)
-            }
-            newTabBar
+            carousel
         }
         .background(Theme.paper)
         .onAppear { manager.captureAllPreviews() }
     }
 
-    private var columns: [GridItem] {
-        if sizeClass == .regular {
-            return [GridItem(.adaptive(minimum: 300), spacing: 16)]
+    // MARK: Carousel
+
+    private var carousel: some View {
+        GeometryReader { geo in
+            // iPad (wide): card ≈ 62% of the width so neighbours peek in
+            // from both sides. iPhone: near-full-width cards.
+            let cardWidth = geo.size.width >= 700
+                ? geo.size.width * 0.62
+                : geo.size.width * 0.84
+            let cardHeight = max(geo.size.height - 32, 200)
+            // Symmetric side padding lets the snapped card sit centred.
+            let side = max((geo.size.width - cardWidth) / 2, 16)
+
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 16) {
+                        ForEach(manager.tabs) { tab in
+                            TabCard(tab: tab,
+                                    isActive: tab.id == manager.activeTabID,
+                                    onSelect: {
+                                        manager.selectTab(tab)
+                                        dismiss()
+                                    },
+                                    onClose: {
+                                        manager.closeTab(tab)
+                                    })
+                                .frame(width: cardWidth, height: cardHeight)
+                                .id(tab.id)
+                        }
+                        newTabCard
+                            .frame(width: cardWidth, height: cardHeight)
+                    }
+                    .scrollTargetLayout()
+                    .padding(.horizontal, side)
+                    .padding(.vertical, 16)
+                }
+                .scrollTargetBehavior(.viewAligned)
+                .onAppear {
+                    proxy.scrollTo(manager.activeTabID, anchor: .center)
+                }
+            }
         }
-        return [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
     }
+
+    private var newTabCard: some View {
+        Button {
+            manager.newTab()
+            dismiss()
+        } label: {
+            VStack(spacing: 12) {
+                Image(systemName: "plus")
+                    .font(.system(size: 44, weight: .bold))
+                Text("新しいタブ")
+                    .font(.headline)
+            }
+            .foregroundStyle(Theme.cobalt)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Theme.cobalt.opacity(0.45),
+                                  style: StrokeStyle(lineWidth: 1.5, dash: [8, 6]))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Header
 
     private var header: some View {
         HStack(spacing: 10) {
@@ -61,26 +108,6 @@ struct TabOverviewView: View {
         .padding(.vertical, 10)
         .background(Theme.surface)
         .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var newTabBar: some View {
-        HStack {
-            Spacer()
-            Button {
-                manager.newTab()
-                dismiss()
-            } label: {
-                Image(systemName: "plus")
-                    .font(.title3.bold())
-                    .foregroundStyle(.white)
-                    .frame(width: 56, height: 56)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Theme.cobalt))
-            }
-            Spacer()
-        }
-        .padding(.vertical, 12)
-        .background(Theme.surface)
-        .overlay(alignment: .top) { Divider() }
     }
 }
 
@@ -157,8 +184,7 @@ private struct TabCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(0.78, contentMode: .fit)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
     }
 }
