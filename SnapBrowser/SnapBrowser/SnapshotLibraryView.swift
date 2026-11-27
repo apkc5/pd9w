@@ -9,6 +9,7 @@ struct SnapshotLibraryView: View {
     var onOpenURL: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var viewerItem: SnapshotItem?
+    @State private var sharePayload: SharePayload?
 
     var body: some View {
         Group {
@@ -24,6 +25,7 @@ struct SnapshotLibraryView: View {
                                 SnapshotRow(item: item,
                                             onOpen: { onOpenInBrowser(item) },
                                             onDetail: { viewerItem = item },
+                                            onShare: { share(item) },
                                             onDelete: { store.delete(item) })
                             }
                         } header: {
@@ -42,7 +44,22 @@ struct SnapshotLibraryView: View {
         .navigationDestination(item: $viewerItem) { item in
             SnapshotViewerView(store: store, item: item, onOpenURL: onOpenURL)
         }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(items: payload.items)
+        }
         .onAppear { store.reload() }
+    }
+
+    /// Shares the snapshot's saved files (image / self-contained HTML /
+    /// web archive — whichever exist) via the system share sheet.
+    private func share(_ item: SnapshotItem) {
+        let fm = FileManager.default
+        let files = ["image.png", "full.html", "archive.webarchive"]
+            .map { store.fileURL(for: item, name: $0) }
+            .filter { fm.fileExists(atPath: $0.path) }
+        if !files.isEmpty {
+            sharePayload = SharePayload(items: files)
+        }
     }
 
     private struct DayGroup: Identifiable {
@@ -63,6 +80,7 @@ private struct SnapshotRow: View {
     let item: SnapshotItem
     var onOpen: () -> Void
     var onDetail: () -> Void
+    var onShare: () -> Void
     var onDelete: () -> Void
 
     var body: some View {
@@ -103,6 +121,10 @@ private struct SnapshotRow: View {
             Button(role: .destructive, action: onDelete) {
                 Label("削除", systemImage: "trash")
             }
+            Button(action: onShare) {
+                Label("共有", systemImage: "square.and.arrow.up")
+            }
+            .tint(Theme.cobalt)
         }
     }
 
