@@ -10,6 +10,17 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     let id = UUID()
     let webView: WKWebView
 
+    /// Shared user preferences (search engine / desktop default / zoom).
+    let settings: AppSettings
+    /// Private tabs use a non-persistent data store, record no history
+    /// and are never written into the saved session (v0.4).
+    let isPrivate: Bool
+    /// Desktop-site mode for this tab (desktop UA), toggled from the menu.
+    @Published var desktopMode: Bool
+
+    static let desktopUserAgent =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+
     @Published var addressText: String = ""
     @Published var pageTitle: String = ""
     @Published var canGoBack: Bool = false
@@ -36,13 +47,24 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
 
     private var observations: [NSKeyValueObservation] = []
 
-    init(startURL: URL?) {
+    init(startURL: URL?, settings: AppSettings, isPrivate: Bool = false) {
+        self.settings = settings
+        self.isPrivate = isPrivate
+        self.desktopMode = settings.desktopByDefault
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
-        webView = WKWebView(frame: UIScreen.main.bounds, configuration: config)
+        config.websiteDataStore = isPrivate ? .nonPersistent() : .default()
+        // Frame starts at .zero: SwiftUI sizes the web view to the real
+        // window. (v0.3 and earlier used UIScreen.main.bounds, which is
+        // the full iPad screen even in a small floating window — that
+        // mismatch is what distorted tab previews there.)
+        webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        if desktopMode {
+            webView.customUserAgent = Self.desktopUserAgent
+        }
+        webView.pageZoom = CGFloat(settings.textSizePercent) / 100.0
 
         observations.append(webView.observe(\.canGoBack, options: [.new]) { [weak self] wv, _ in
             Task { @MainActor in self?.canGoBack = wv.canGoBack }
@@ -81,7 +103,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     func loadAddressBar() {
         let text = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        if let url = Self.urlFromAddressText(text) {
+        if let url = urlFromAddressText(text) {
             load(url)
         }
     }
@@ -109,9 +131,9 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         return webView.url?.absoluteString
     }
 
-    /// Accepts full URLs, bare domains, and plain search terms (Brave Search,
-    /// matching the Android version's default engine).
-    static func urlFromAddressText(_ text: String) -> URL? {
+    /// Accepts full URLs, bare domains, and plain search terms (resolved
+    /// with the user's chosen search engine; Brave Search by default).
+    func urlFromAddressText(_ text: String) -> URL? {
         if let url = URL(string: text), url.scheme == "http" || url.scheme == "https" {
             return url
         }
@@ -119,10 +141,119 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         if looksLikeDomain, let url = URL(string: "https://" + text) {
             return url
         }
-        var components = URLComponents(string: "https://search.brave.com/search")
-        components?.queryItems = [URLQueryItem(name: "q", value: text)]
-        return components?.url
+        return settings.searchEngine.searchURL(for: text)
     }
+
+    // MARK: - Desktop site / text size (v0.4)
+
+    /// Switches this tab between mobile and desktop user agents and
+    /// reloads so the site serves the matching layout.
+    func setDesktopMode(_ on: Bool) {
+        guard on != desktopMode else { return }
+        desktopMode = on
+        webView.customUserAgent = on ? Self.desktopUserAgent : nil
+        if !showsStartPage, archiveSnapshot == nil {
+            reload()
+        }
+    }
+
+    /// Re-applies the settings text size (page zoom) to this tab.
+    func applyTextSize() {
+        webView.pageZoom = CGFloat(settings.textSizePercent) / 100.0
+    }
+
+    // MARK: - Find in page (v0.4)
+
+    /// Native WKWebView find: highlights and scrolls to the match.
+    func findInPage(_ query: String, backwards: Bool,
+                    completion: @escaping (Bool) -> Void) {
+        let config = WKFindConfiguration()
+        config.backwards = backwards
+        config.caseSensitive = false
+        config.wraps = true
+        webView.find(query, configuration: config) { result in
+            completion(result.matchFound)
+        }
+    }
+
+    /// Approximate total match count from the page's visible text
+    /// (WKWebView.find itself reports only whether a match exists).
+    func countMatches(of query: String) async -> Int {
+        guard !query.isEmpty else { return 0 }
+        let escaped = query
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        let js = "(function(){var t=(document.body&&document.body.innerText)||'';"
+            + "var q='\(escaped)'.toLowerCase();if(!q)return 0;"
+            + "return t.toLowerCase().split(q).length-1;})()"
+        guard let raw = try? await webView.evaluateJavaScript(js) else { return 0 }
+        if let number = raw as? NSNumber { return number.intValue }
+        return 0
+    }
+
+    // MARK: - Reader extraction (v0.4)
+
+    /// Heuristic article extraction for reader mode: picks the main /
+    /// article element, or the text-densest block, clones it, strips
+    /// scripts, chrome and ALL attributes except img src/alt and link
+    /// hrefs (made absolute, javascript: dropped), and returns JSON.
+    func extractReaderContent() async -> (title: String, bodyHTML: String)? {
+        guard let raw = try? await webView.evaluateJavaScript(Self.readerExtractionJS),
+              let json = raw as? String,
+              let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let body = object["html"] as? String else { return nil }
+        return (object["title"] as? String ?? "", body)
+    }
+
+    private static let readerExtractionJS = """
+    (function () {
+      var title = document.title || '';
+      function abs(u) { try { return new URL(u, document.baseURI).href; } catch (e) { return ''; } }
+      function textLen(el) { return ((el && el.innerText) || '').trim().length; }
+      var root = document.querySelector('main') || document.querySelector('article');
+      if (!root) {
+        var best = null, bestScore = 0;
+        var nodes = document.querySelectorAll('div, section, td');
+        for (var i = 0; i < nodes.length; i++) {
+          var el = nodes[i];
+          var t = textLen(el);
+          if (t < 200) continue;
+          var links = el.querySelectorAll('a');
+          var linkText = 0;
+          for (var j = 0; j < links.length; j++) linkText += (links[j].innerText || '').length;
+          var score = t - linkText * 2;
+          if (score > bestScore) { bestScore = score; best = el; }
+        }
+        root = best || document.body;
+      }
+      if (!root) return JSON.stringify({ title: title, html: '' });
+      var clone = root.cloneNode(true);
+      var kill = clone.querySelectorAll('script, style, nav, header, footer, aside, form, iframe, noscript, button, svg');
+      for (var k = 0; k < kill.length; k++) kill[k].remove();
+      function clean(node) {
+        var keep = {};
+        if (node.tagName === 'A') {
+          var href = node.getAttribute('href');
+          var resolved = href ? abs(href) : '';
+          if (resolved && resolved.toLowerCase().indexOf('javascript:') !== 0) keep.href = resolved;
+        }
+        if (node.tagName === 'IMG') {
+          var src = node.getAttribute('src') || node.getAttribute('data-src');
+          var rsrc = src ? abs(src) : '';
+          if (rsrc) keep.src = rsrc;
+          if (node.getAttribute('alt')) keep.alt = node.getAttribute('alt');
+        }
+        var attrs = Array.prototype.slice.call(node.attributes || []);
+        for (var a = 0; a < attrs.length; a++) node.removeAttribute(attrs[a].name);
+        for (var key in keep) node.setAttribute(key, keep[key]);
+      }
+      clean(clone);
+      var all = clone.querySelectorAll('*');
+      for (var m = 0; m < all.length; m++) clean(all[m]);
+      return JSON.stringify({ title: title, html: clone.innerHTML || '' });
+    })()
+    """
 
     // MARK: - Archive display
 
@@ -168,7 +299,37 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     // MARK: - Preview (tab overview thumbnails)
 
     func capturePreview() {
-        guard !showsStartPage, webView.bounds.width > 0 else { return }
+        capturePreview(matching: webView.bounds.size)
+    }
+
+    /// Captures the tab preview at the given size. Background tabs are
+    /// not in the view hierarchy, so without this their web views keep
+    /// whatever frame they were created with and the snapshot's aspect
+    /// (and the page layout inside it) does not match the window the
+    /// user is actually looking at — the distortion reported on iPad
+    /// floating windows in v0.3. The manager passes the active tab's
+    /// real bounds so every preview matches the current window.
+    func capturePreview(matching size: CGSize) {
+        guard !showsStartPage else { return }
+        var resized = false
+        if size.width > 0, webView.bounds.size != size {
+            webView.frame = CGRect(origin: .zero, size: size)
+            resized = true
+        }
+        guard webView.bounds.width > 0 else { return }
+        if resized {
+            // Let the page lay out at the new size before snapshotting.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                self?.performPreviewCapture()
+            }
+        } else {
+            performPreviewCapture()
+        }
+    }
+
+    private func performPreviewCapture() {
+        guard webView.bounds.width > 0 else { return }
         let config = WKSnapshotConfiguration()
         config.rect = webView.bounds
         webView.takeSnapshot(with: config) { [weak self] image, _ in
