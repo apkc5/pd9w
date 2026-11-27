@@ -15,6 +15,7 @@ final class BrowserModel: ObservableObject {
 
     let bookmarks = BookmarkStore()
     let history = HistoryStore()
+    let settings = AppSettings()
 
     private static let sessionKey = "session.tabs.v2"
     private var didResolveArchives = false
@@ -34,11 +35,12 @@ final class BrowserModel: ObservableObject {
 
     // MARK: - Tab operations
 
-    private func makeTab(startURL: URL? = nil) -> BrowserTab {
-        let tab = BrowserTab(startURL: startURL)
-        tab.onVisit = { [weak self] title, url in
-            self?.history.record(title: title, url: url)
-            self?.persistSession()
+    private func makeTab(startURL: URL? = nil, isPrivate: Bool = false) -> BrowserTab {
+        let tab = BrowserTab(startURL: startURL, settings: settings, isPrivate: isPrivate)
+        tab.onVisit = { [weak self, weak tab] title, url in
+            guard let self, let tab, !tab.isPrivate else { return }
+            self.history.record(title: title, url: url)
+            self.persistSession()
         }
         return tab
     }
@@ -47,6 +49,18 @@ final class BrowserModel: ObservableObject {
     func newTab(url: URL? = nil) -> BrowserTab {
         activeTab.capturePreview()
         let tab = makeTab(startURL: url)
+        tabs.append(tab)
+        activeTabID = tab.id
+        persistSession()
+        return tab
+    }
+
+    /// Private tab (v0.4): non-persistent data store, no history, and
+    /// its URL is never written into the saved session.
+    @discardableResult
+    func newPrivateTab() -> BrowserTab {
+        activeTab.capturePreview()
+        let tab = makeTab(isPrivate: true)
         tabs.append(tab)
         activeTabID = tab.id
         persistSession()
@@ -75,7 +89,31 @@ final class BrowserModel: ObservableObject {
     }
 
     func captureAllPreviews() {
-        for tab in tabs { tab.capturePreview() }
+        // Background previews are captured at the active tab's real
+        // (window) size so their aspect matches what the user sees —
+        // see BrowserTab.capturePreview(matching:).
+        let reference = activeTab.webView.bounds.size
+        for tab in tabs { tab.capturePreview(matching: reference) }
+    }
+
+    // MARK: - Settings support (v0.4)
+
+    /// Applies the settings text size (page zoom) to every open tab.
+    func applyTextSizeToAllTabs() {
+        for tab in tabs { tab.applyTextSize() }
+    }
+
+    /// Removes all website data (cookies, caches, storage) from the
+    /// default store. Bookmarks, history records and snapshots are
+    /// app data, not website data, and are handled separately.
+    func clearWebsiteData() async {
+        let store = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        await withCheckedContinuation { continuation in
+            store.removeData(ofTypes: types, modifiedSince: Date.distantPast) {
+                continuation.resume()
+            }
+        }
     }
 
     /// Opens a URL in the active tab (used by bookmarks / history / library).
@@ -111,6 +149,10 @@ final class BrowserModel: ObservableObject {
     private func persistSession() {
         let state = SessionState(
             tabs: tabs.map { tab in
+                if tab.isPrivate {
+                    // Private tabs restore as a plain start page.
+                    return SessionTab(url: nil, archiveFolder: nil)
+                }
                 if let snapshot = tab.archiveSnapshot {
                     return SessionTab(url: nil, archiveFolder: snapshot.folderName)
                 }
