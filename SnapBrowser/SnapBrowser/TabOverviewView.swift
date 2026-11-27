@@ -1,66 +1,76 @@
 import SwiftUI
 
 /// Tab overview as a horizontal carousel of LARGE cards, app-switcher
-/// style (the user's Brave-on-iPad reference photo): each card is most of
-/// the screen, cards snap one-by-one as you swipe sideways, the current
-/// tab is framed in cobalt, and a ＋ card at the end of the row adds a
-/// tab. Layout inspiration only — no Brave assets.
+/// style (the user's Brave-on-iPad reference photo): each card is most
+/// of the screen, cards snap one-by-one as you swipe sideways, the
+/// current tab is framed in cobalt, and a ＋ card at the end of the row
+/// adds a tab. Layout inspiration only — no Brave assets.
+///
+/// v0.4 layout fix: EVERY metric below comes from the GeometryReader's
+/// container size — the window this view is actually displayed in.
+/// v0.3 derived card geometry in ways that broke inside iPad floating
+/// windows (cards wider than the window, neighbours covering the edge,
+/// distorted previews): the header gets an explicit top inset because
+/// a fullScreenCover's safe area does not clear the iPadOS window
+/// chrome (traffic-light buttons) the way the main window's does, and
+/// previews are captured at the active window's size (see
+/// BrowserTab.capturePreview(matching:)).
 struct TabOverviewView: View {
     @ObservedObject var manager: BrowserModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            carousel
+        GeometryReader { geo in
+            let container = geo.size
+            // Header slot includes the top inset that clears the window
+            // chrome overlaying the cover.
+            let headerHeight: CGFloat = 76
+            let cardWidth = container.width >= 700
+                ? container.width * 0.62
+                : container.width * 0.84
+            let cardHeight = max(container.height - headerHeight - 32, 180)
+            // Symmetric side padding lets the snapped card sit centred,
+            // with both neighbours peeking in equally.
+            let side = max((container.width - cardWidth) / 2, 12)
+
+            VStack(spacing: 0) {
+                header
+                    .frame(height: headerHeight)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 16) {
+                            ForEach(manager.tabs) { tab in
+                                TabCard(tab: tab,
+                                        isActive: tab.id == manager.activeTabID,
+                                        onSelect: {
+                                            manager.selectTab(tab)
+                                            dismiss()
+                                        },
+                                        onClose: {
+                                            manager.closeTab(tab)
+                                        })
+                                    .frame(width: cardWidth, height: cardHeight)
+                                    .id(tab.id)
+                            }
+                            newTabCard
+                                .frame(width: cardWidth, height: cardHeight)
+                        }
+                        .scrollTargetLayout()
+                        .padding(.horizontal, side)
+                        .padding(.vertical, 16)
+                    }
+                    .scrollTargetBehavior(.viewAligned)
+                    .onAppear {
+                        proxy.scrollTo(manager.activeTabID, anchor: .center)
+                    }
+                }
+            }
         }
         .background(Theme.paper)
         .onAppear { manager.captureAllPreviews() }
     }
 
-    // MARK: Carousel
-
-    private var carousel: some View {
-        GeometryReader { geo in
-            // iPad (wide): card ≈ 62% of the width so neighbours peek in
-            // from both sides. iPhone: near-full-width cards.
-            let cardWidth = geo.size.width >= 700
-                ? geo.size.width * 0.62
-                : geo.size.width * 0.84
-            let cardHeight = max(geo.size.height - 32, 200)
-            // Symmetric side padding lets the snapped card sit centred.
-            let side = max((geo.size.width - cardWidth) / 2, 16)
-
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 16) {
-                        ForEach(manager.tabs) { tab in
-                            TabCard(tab: tab,
-                                    isActive: tab.id == manager.activeTabID,
-                                    onSelect: {
-                                        manager.selectTab(tab)
-                                        dismiss()
-                                    },
-                                    onClose: {
-                                        manager.closeTab(tab)
-                                    })
-                                .frame(width: cardWidth, height: cardHeight)
-                                .id(tab.id)
-                        }
-                        newTabCard
-                            .frame(width: cardWidth, height: cardHeight)
-                    }
-                    .scrollTargetLayout()
-                    .padding(.horizontal, side)
-                    .padding(.vertical, 16)
-                }
-                .scrollTargetBehavior(.viewAligned)
-                .onAppear {
-                    proxy.scrollTo(manager.activeTabID, anchor: .center)
-                }
-            }
-        }
-    }
+    // MARK: New tab card (end of the row)
 
     private var newTabCard: some View {
         Button {
@@ -105,7 +115,11 @@ struct TabOverviewView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        // Extra top padding: inside a fullScreenCover the iPadOS window
+        // controls overlay the top-left corner (v0.3's header collided
+        // with them in floating windows).
+        .padding(.top, 20)
+        .padding(.bottom, 10)
         .background(Theme.surface)
         .overlay(alignment: .bottom) { Divider() }
     }
@@ -146,6 +160,11 @@ private struct TabCard: View {
                 .foregroundStyle(isActive ? Theme.cobalt : Theme.ink)
                 .lineLimit(1)
             Spacer()
+            if tab.isPrivate {
+                Image(systemName: "eye.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.caption.bold())
