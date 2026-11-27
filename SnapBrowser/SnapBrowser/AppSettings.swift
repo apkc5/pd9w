@@ -38,6 +38,8 @@ final class AppSettings: ObservableObject {
         static let searchEngine = "settings.searchEngine"
         static let desktopDefault = "settings.desktopByDefault"
         static let textSize = "settings.textSizePercent"
+        static let searchSuggestions = "settings.searchSuggestionsEnabled"
+        static let suggestPromptDismissed = "settings.suggestPromptDismissed"
     }
 
     @Published var searchEngine: SearchEngine {
@@ -54,10 +56,27 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(textSizePercent, forKey: Keys.textSize) }
     }
 
+    /// Search suggestions in the address-bar panel (v0.4.5). OFF by
+    /// default: while on, the typed text is sent to the selected
+    /// search engine on every keystroke, so — exactly like Brave —
+    /// this is an explicit opt-in, never silently enabled.
+    @Published var searchSuggestionsEnabled: Bool {
+        didSet { UserDefaults.standard.set(searchSuggestionsEnabled, forKey: Keys.searchSuggestions) }
+    }
+
+    /// Set when the user answers 「無効にする」 on the panel's opt-in
+    /// prompt (v0.4.5). The prompt never comes back afterwards, but
+    /// the Settings toggle can still turn suggestions on later.
+    @Published var suggestPromptDismissed: Bool {
+        didSet { UserDefaults.standard.set(suggestPromptDismissed, forKey: Keys.suggestPromptDismissed) }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         searchEngine = SearchEngine(rawValue: defaults.string(forKey: Keys.searchEngine) ?? "") ?? .brave
         desktopByDefault = defaults.bool(forKey: Keys.desktopDefault)
+        searchSuggestionsEnabled = defaults.bool(forKey: Keys.searchSuggestions)
+        suggestPromptDismissed = defaults.bool(forKey: Keys.suggestPromptDismissed)
         let storedSize = defaults.integer(forKey: Keys.textSize)
         textSizePercent = storedSize == 0 ? 100 : storedSize
     }

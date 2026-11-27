@@ -20,6 +20,7 @@ struct ContentView: View {
             tab: manager.activeTab,
             manager: manager,
             store: store,
+            settings: manager.settings,
             onShowTabs: {
                 manager.captureAllPreviews()
                 showingTabs = true
@@ -131,6 +132,7 @@ private struct BrowserTabView: View {
     @ObservedObject var tab: BrowserTab
     @ObservedObject var manager: BrowserModel
     @ObservedObject var store: SnapshotStore
+    @ObservedObject var settings: AppSettings
     var onShowTabs: () -> Void
     var onShowLibrary: () -> Void
     var onShowBookmarks: () -> Void
@@ -145,11 +147,27 @@ private struct BrowserTabView: View {
     @State private var findCount: Int?
     @State private var findMiss = false
     @State private var stripFrame: CGRect = .zero
+    @FocusState private var addressFocused: Bool
+    @State private var suggestions: [String] = []
+    @State private var suggestTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geo in
         VStack(spacing: 0) {
             addressBar
+                .overlay(alignment: .topLeading) {
+                    // Address-bar panel (v0.4.5): suggestions / find /
+                    // on-device matches, dropped from the bar over the
+                    // strip and page like Brave's. An overlay (not a
+                    // VStack row) so the web view is never resized —
+                    // and reflown — while the user is typing.
+                    if addressFocused {
+                        suggestionPanel
+                            .frame(width: geo.size.width)
+                            .offset(y: 62)
+                    }
+                }
+                .zIndex(20)
             if geo.size.width >= 700 {
                 tabStrip
             }
@@ -180,6 +198,17 @@ private struct BrowserTabView: View {
         }
         }
         .background(Theme.paper)
+        .onChange(of: tab.addressText) { _ in refreshSuggestions() }
+        .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
+        .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
+        .onChange(of: addressFocused) { focused in
+            if focused {
+                refreshSuggestions()
+            } else {
+                suggestTask?.cancel()
+                suggestions = []
+            }
+        }
         .alert("スナップ結果", isPresented: snapAlertBinding) {
             Button("OK", role: .cancel) { tab.lastSnapResult = nil }
         } message: {
@@ -201,7 +230,11 @@ private struct BrowserTabView: View {
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
                 .submitLabel(.go)
-                .onSubmit { tab.loadAddressBar() }
+                .focused($addressFocused)
+                .onSubmit {
+                    addressFocused = false
+                    tab.loadAddressBar()
+                }
             if tab.isLoading {
                 Button { tab.stop() } label: {
                     Image(systemName: "xmark")
@@ -230,6 +263,222 @@ private struct BrowserTabView: View {
         if tab.archiveSnapshot != nil { return "archivebox" }
         if tab.isPrivate { return "eye.slash" }
         return "lock.fill"
+    }
+
+    // MARK: Address-bar panel (v0.4.5: suggestions / find / on-device)
+
+    /// The trimmed text currently in the address field.
+    private var panelQuery: String {
+        tab.addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// True once the user has typed something that is not simply the
+    /// loaded page's own URL — merely tapping the bar (which leaves
+    /// the current URL in the field) must not fire suggestion fetches
+    /// or pop the opt-in prompt for the URL itself.
+    private var hasFreshQuery: Bool {
+        !panelQuery.isEmpty && panelQuery != tab.currentURLString
+    }
+
+    private var showSuggestPrompt: Bool {
+        !settings.searchSuggestionsEnabled
+            && !settings.suggestPromptDismissed
+            && hasFreshQuery
+    }
+
+    /// Brave-shaped dropdown under the address bar: the suggestions
+    /// opt-in prompt (while off), engine suggestions (while on), a
+    /// find-in-page row, and on-device matches (bookmarks first, then
+    /// history). With an empty field it lists recent history instead.
+    private var suggestionPanel: some View {
+        VStack(spacing: 0) {
+            if showSuggestPrompt {
+                suggestPromptRow
+                Divider()
+            }
+            ScrollView {
+                VStack(spacing: 0) {
+                    if settings.searchSuggestionsEnabled && hasFreshQuery {
+                        panelRow(icon: "magnifyingglass", title: panelQuery) {
+                            submitPanelText(panelQuery)
+                        }
+                        ForEach(suggestions, id: \.self) { suggestion in
+                            panelRow(icon: "magnifyingglass", title: suggestion) {
+                                submitPanelText(suggestion)
+                            }
+                        }
+                    }
+                    if hasFreshQuery && !tab.showsStartPage && tab.archiveSnapshot == nil {
+                        panelRow(icon: "doc.text.magnifyingglass",
+                                 title: "「\(panelQuery)」をページ内検索") {
+                            openFindFromPanel()
+                        }
+                    }
+                    if !deviceMatches.isEmpty {
+                        deviceSectionHeader
+                        ForEach(deviceMatches) { match in
+                            panelRow(icon: match.isBookmark ? "bookmark.fill" : "clock.arrow.circlepath",
+                                     title: match.title,
+                                     subtitle: match.url) {
+                                addressFocused = false
+                                manager.openInActiveTab(match.url)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 360)
+        }
+        .background(Theme.paper)
+        .overlay(alignment: .bottom) { Divider() }
+        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 6)
+    }
+
+    /// Brave's opt-in card, mirrored: suggestions stay OFF until the
+    /// user explicitly enables them, because the typed text is sent
+    /// to the search engine. 「無効にする」 dismisses the prompt for
+    /// good (Settings can still turn the feature on later).
+    private var suggestPromptRow: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("検索候補を有効にしますか？")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(Theme.ink)
+                Text("入力中の文字が \(settings.searchEngine.title) に送信されます")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("有効化") { settings.searchSuggestionsEnabled = true }
+                .font(.subheadline.bold())
+                .foregroundStyle(Theme.cobalt)
+                .frame(height: 44)
+                .contentShape(Rectangle())
+            Button("無効にする") { settings.suggestPromptDismissed = true }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(height: 44)
+                .contentShape(Rectangle())
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(Theme.surface)
+    }
+
+    private var deviceSectionHeader: some View {
+        HStack {
+            Text("お使いのデバイス")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    private func panelRow(icon: String, title: String, subtitle: String? = nil,
+                          action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private struct PanelMatch: Identifiable {
+        let id: String
+        let title: String
+        let url: String
+        let isBookmark: Bool
+    }
+
+    /// On-device matches for the typed text: bookmarks first, then
+    /// history (title or URL contains the text, case-insensitive),
+    /// de-duplicated by URL, 8 rows max. With an empty field this is
+    /// simply the most recent history, like Brave's panel.
+    private var deviceMatches: [PanelMatch] {
+        let query = panelQuery
+        if query.isEmpty {
+            return manager.history.items.prefix(8).map {
+                PanelMatch(id: "h-\($0.id.uuidString)",
+                           title: $0.title, url: $0.url, isBookmark: false)
+            }
+        }
+        var results: [PanelMatch] = []
+        var seen = Set<String>()
+        for bookmark in manager.bookmarks.search(query) {
+            results.append(PanelMatch(id: "b-\(bookmark.id.uuidString)",
+                                      title: bookmark.title, url: bookmark.url,
+                                      isBookmark: true))
+            seen.insert(bookmark.url)
+        }
+        for item in manager.history.search(query) where !seen.contains(item.url) {
+            results.append(PanelMatch(id: "h-\(item.id.uuidString)",
+                                      title: item.title, url: item.url,
+                                      isBookmark: false))
+        }
+        return Array(results.prefix(8))
+    }
+
+    /// Debounced (~200ms) suggestion fetch. Stale responses are
+    /// discarded by re-checking the query after the await, and any
+    /// focus loss / submit cancels the in-flight task.
+    private func refreshSuggestions() {
+        suggestTask?.cancel()
+        guard addressFocused, settings.searchSuggestionsEnabled, hasFreshQuery else {
+            suggestions = []
+            return
+        }
+        let query = panelQuery
+        let engine = settings.searchEngine
+        suggestTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            let results = await SearchSuggestions.fetch(engine: engine, query: query)
+            if Task.isCancelled { return }
+            if panelQuery == query {
+                suggestions = results
+            }
+        }
+    }
+
+    private func submitPanelText(_ text: String) {
+        addressFocused = false
+        if text != tab.addressText {
+            tab.addressText = text
+        }
+        // loadAddressBar resolves domains to URLs and everything
+        // else to a search with the current engine — exactly the
+        // behaviour a suggestion tap needs.
+        tab.loadAddressBar()
+    }
+
+    private func openFindFromPanel() {
+        findQuery = panelQuery
+        findActive = true
+        addressFocused = false
+        runFind(backwards: false)
     }
 
     // MARK: Archive banner (slim strip, flush under the address bar)

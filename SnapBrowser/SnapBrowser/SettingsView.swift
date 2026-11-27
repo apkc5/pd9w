@@ -26,12 +26,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("検索") {
+                Section {
                     Picker("既定の検索エンジン", selection: $settings.searchEngine) {
                         ForEach(SearchEngine.allCases) { engine in
                             Text(engine.title).tag(engine)
                         }
                     }
+                    Toggle("検索候補を表示", isOn: $settings.searchSuggestionsEnabled)
+                } header: {
+                    Text("検索")
+                } footer: {
+                    Text("検索候補を有効にすると、アドレスバーに入力中の文字が選択中の検索エンジンに送信され、候補が表示されます。")
                 }
 
                 Section("表示") {
