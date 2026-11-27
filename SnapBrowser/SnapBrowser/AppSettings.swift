@@ -31,6 +31,25 @@ enum SearchEngine: String, CaseIterable, Identifiable {
     }
 }
 
+/// The start page's walking pet (v0.4.9, item 9). All artwork is
+/// bundled external material — see PetAssets.swift for the source
+/// and license of each animal. `.none` hides the pet entirely.
+enum HomePet: String, CaseIterable, Identifiable {
+    case cat, dog, duck, penguin, none
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .cat: return "猫"
+        case .dog: return "犬"
+        case .duck: return "あひる"
+        case .penguin: return "ペンギン"
+        case .none: return "なし"
+        }
+    }
+}
+
 /// User preferences (v0.4). UserDefaults only — no Keychain anywhere in
 /// this app (AltStore re-signing breaks Keychain access).
 final class AppSettings: ObservableObject {
@@ -41,6 +60,8 @@ final class AppSettings: ObservableObject {
         static let searchSuggestions = "settings.searchSuggestionsEnabled"
         static let suggestPromptDismissed = "settings.suggestPromptDismissed"
         static let hiddenSuggestionURLs = "settings.hiddenSuggestionURLs"
+        static let homePet = "settings.homePet"
+        static let hiddenShortcutURLs = "settings.hiddenShortcutURLs"
     }
 
     @Published var searchEngine: SearchEngine {
@@ -85,6 +106,31 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Which animal walks along the start page's bottom edge
+    /// (v0.4.9, item 9). Defaults to the cat.
+    @Published var homePet: HomePet {
+        didSet { UserDefaults.standard.set(homePet.rawValue, forKey: Keys.homePet) }
+    }
+
+    /// Bookmark URLs removed from the start page's shortcut grid via
+    /// its long-press menu (v0.4.9, item 8). Same hide-only rule as
+    /// the panel's hidden suggestions: the bookmark itself is never
+    /// deleted and stays in the Bookmarks screen.
+    @Published private(set) var hiddenShortcutURLs: Set<String> {
+        didSet {
+            UserDefaults.standard.set(hiddenShortcutURLs.sorted(),
+                                      forKey: Keys.hiddenShortcutURLs)
+        }
+    }
+
+    func hideShortcutURL(_ url: String) {
+        hiddenShortcutURLs.insert(url)
+    }
+
+    func isShortcutHidden(_ url: String) -> Bool {
+        hiddenShortcutURLs.contains(url)
+    }
+
     func hideSuggestionURL(_ url: String) {
         hiddenSuggestionURLs.insert(url)
     }
@@ -104,6 +150,8 @@ final class AppSettings: ObservableObject {
         searchSuggestionsEnabled = defaults.bool(forKey: Keys.searchSuggestions)
         suggestPromptDismissed = defaults.bool(forKey: Keys.suggestPromptDismissed)
         hiddenSuggestionURLs = Set(defaults.stringArray(forKey: Keys.hiddenSuggestionURLs) ?? [])
+        homePet = HomePet(rawValue: defaults.string(forKey: Keys.homePet) ?? "") ?? .cat
+        hiddenShortcutURLs = Set(defaults.stringArray(forKey: Keys.hiddenShortcutURLs) ?? [])
         let storedSize = defaults.integer(forKey: Keys.textSize)
         textSizePercent = storedSize == 0 ? 100 : storedSize
     }

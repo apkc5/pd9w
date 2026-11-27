@@ -15,6 +15,10 @@ struct PlaylistView: View {
     @State private var showAddURLs = false
     @State private var confirmDeleteAllDownloads = false
     @State private var notice: String?
+    /// ZIP export (v0.4.9): in-flight flag + the temp file being shared.
+    @State private var isExporting = false
+    @State private var exportPayload: SharePayload?
+    @State private var pendingExportSummary: String?
 
     var body: some View {
         NavigationStack {
@@ -49,6 +53,12 @@ struct PlaylistView: View {
                         } label: {
                             Label("URLリストから追加", systemImage: "text.badge.plus")
                         }
+                        Button {
+                            exportZip()
+                        } label: {
+                            Label("ダウンロード済みをZIPで書き出す", systemImage: "archivebox")
+                        }
+                        .disabled(store.downloadedCount == 0 || isExporting)
                         Button(role: .destructive) {
                             confirmDeleteAllDownloads = true
                         } label: {
@@ -86,6 +96,59 @@ struct PlaylistView: View {
             } message: {
                 Text(notice ?? "")
             }
+            .sheet(item: $exportPayload) { payload in
+                // The temp zip is deleted as soon as the share sheet
+                // completes (saved, sent or cancelled alike), and the
+                // count/size summary is announced only afterwards so
+                // the notice alert never fights the sheet.
+                ActivityView(items: payload.items) {
+                    if let url = payload.items.first as? URL {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                    if let summary = pendingExportSummary {
+                        pendingExportSummary = nil
+                        notice = summary
+                    }
+                }
+            }
+            .overlay {
+                if isExporting {
+                    ZStack {
+                        Color.black.opacity(0.25).ignoresSafeArea()
+                        VStack(spacing: 10) {
+                            ProgressView()
+                            Text("ZIPを作成しています…")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(Theme.ink)
+                        }
+                        .padding(20)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.surface))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Builds the zip on a background task, then hands the file to
+    /// the share sheet; the count/size summary is announced when
+    /// the sheet completes (see the sheet's completion handler).
+    private func exportZip() {
+        guard !isExporting else { return }
+        isExporting = true
+        Task {
+            do {
+                if let result = try await store.exportDownloadedAsZip() {
+                    isExporting = false
+                    pendingExportSummary = "\(result.count)件・合計 \(byteText(result.totalBytes)) をZIPに書き出しました"
+                    exportPayload = SharePayload(items: [result.url])
+                } else {
+                    isExporting = false
+                    notice = "ダウンロード済みのファイルがありませんでした"
+                }
+            } catch {
+                isExporting = false
+                notice = "ZIPの作成に失敗しました: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -112,6 +175,27 @@ struct PlaylistView: View {
     private func byteText(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
+}
+
+// MARK: - Share sheet with completion (ZIP export cleanup)
+
+/// UIActivityViewController wrapper that reports completion — the
+/// shared ShareSheet has no completion hook, and the ZIP export
+/// needs one to delete its temp file and announce the summary.
+private struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    var onComplete: () -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items,
+                                                  applicationActivities: nil)
+        controller.completionWithItemsHandler = { _, _, _, _ in
+            onComplete()
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Row

@@ -11,7 +11,7 @@ struct ContentView: View {
     @State private var showingAddBookmark = false
 
     private enum SheetKind: String, Identifiable {
-        case library, bookmarks, history, settings, playlist
+        case library, bookmarks, history, settings, playlist, downloads
         var id: String { rawValue }
     }
 
@@ -30,9 +30,11 @@ struct ContentView: View {
             onShowHistory: { sheet = .history },
             onShowSettings: { sheet = .settings },
             onShowPlaylist: { sheet = .playlist },
+            onShowDownloads: { sheet = .downloads },
             onAddBookmark: { showingAddBookmark = true },
             onShare: { shareCurrentPage() },
-            onReader: { showingReader = true }
+            onReader: { showingReader = true },
+            shortcutsEnabled: sheet == nil && !showingTabs && !showingReader && !showingAddBookmark
         )
         .id(manager.activeTabID)
         .background(Theme.paper)
@@ -80,6 +82,8 @@ struct ContentView: View {
                 SettingsView(manager: manager, settings: manager.settings)
             case .playlist:
                 PlaylistView(store: manager.playlist)
+            case .downloads:
+                DownloadsView(store: manager.downloads)
             }
         }
         .sheet(item: $sharePayload) { payload in
@@ -97,7 +101,12 @@ struct ContentView: View {
         }
         .onAppear {
             store.reload()
+            manager.snapshotStore = store
             manager.resolvePendingArchives(using: store)
+            wire(manager.activeTab)
+        }
+        .onChange(of: manager.activeTabID) { _ in
+            wire(manager.activeTab)
         }
         .onContinueUserActivity(TabTearOff.activityType) { activity in
             handleTornOffTab(activity)
@@ -125,6 +134,21 @@ struct ContentView: View {
         return (tab.pageTitle, url)
     }
 
+    /// Connects the active tab's context-menu callbacks (v0.4.9) to
+    /// this scene's UI: share sheet, SNAP (needs the snapshot store),
+    /// and Playlist adds for media links.
+    private func wire(_ tab: BrowserTab) {
+        tab.shareHandler = { items in
+            sharePayload = SharePayload(items: items)
+        }
+        tab.snapHandler = { [weak tab] in
+            tab?.snap(store: store)
+        }
+        tab.playlistLinkHandler = { url in
+            manager.playlist.add(title: "", url: url, pageURL: nil)
+        }
+    }
+
     private func shareCurrentPage() {
         let tab = manager.activeTab
         guard !tab.showsStartPage,
@@ -147,9 +171,14 @@ private struct BrowserTabView: View {
     var onShowHistory: () -> Void
     var onShowSettings: () -> Void
     var onShowPlaylist: () -> Void
+    var onShowDownloads: () -> Void
     var onAddBookmark: () -> Void
     var onShare: () -> Void
     var onReader: () -> Void
+    /// Keyboard shortcuts (v0.4.9) are live only while no sheet or
+    /// cover is up, so they can never fire into another screen's
+    /// text fields.
+    var shortcutsEnabled: Bool = true
 
     @State private var findActive = false
     @State private var findQuery = ""
@@ -210,7 +239,12 @@ private struct BrowserTabView: View {
                     .allowsHitTesting(!tab.showsStartPage)
                 if tab.showsStartPage {
                     StartPageView(tab: tab, bookmarks: manager.bookmarks,
+                                  history: manager.history,
+                                  settings: settings,
                                   onShowBookmarks: onShowBookmarks)
+                }
+                if let message = tab.loadError, !tab.showsStartPage {
+                    loadErrorCard(message)
                 }
             }
             .ignoresSafeArea(edges: .bottom)
@@ -296,6 +330,156 @@ private struct BrowserTabView: View {
         } message: {
             Text(playlistNotice ?? "")
         }
+        // JavaScript panels (v0.4.9): alert / confirm as a native
+        // alert; prompt gets its own sheet with a text field below.
+        .alert("ページからのメッセージ", isPresented: jsAlertBinding) {
+            if let panel = tab.jsPanel {
+                if panel.kind == .confirm {
+                    Button("OK") {
+                        panel.respondConfirm(true)
+                        tab.jsPanel = nil
+                    }
+                    Button("キャンセル", role: .cancel) {
+                        panel.respondConfirm(false)
+                        tab.jsPanel = nil
+                    }
+                } else {
+                    Button("OK", role: .cancel) {
+                        panel.respondAlert()
+                        tab.jsPanel = nil
+                    }
+                }
+            }
+        } message: {
+            Text(tab.jsPanel?.message ?? "")
+        }
+        .sheet(item: promptPanelBinding) { panel in
+            PromptSheet(message: panel.message, initialText: panel.defaultText) { value in
+                panel.respondPrompt(value)
+                tab.jsPanel = nil
+            }
+        }
+        .sheet(item: $tab.authRequest) { request in
+            AuthSheet(request: request) {
+                tab.authRequest = nil
+            }
+        }
+        .onChange(of: tab.tabNotice) { notice in
+            if let notice {
+                showToast(notice)
+                tab.tabNotice = nil
+            }
+        }
+        .onChange(of: manager.addressFocusRequest) { _ in
+            addressFocused = true
+        }
+        .background {
+            if shortcutsEnabled {
+                keyboardShortcuts
+            }
+        }
+    }
+
+    // MARK: Load error card (v0.4.9)
+
+    /// Shown over the page area when a main-frame load fails, with
+    /// the error's own message and a reload button — the page never
+    /// just goes blank any more.
+    private func loadErrorCard(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text("ページを読み込めませんでした")
+                .font(.headline)
+                .foregroundStyle(Theme.ink)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                tab.loadError = nil
+                tab.reload()
+            } label: {
+                Text("再読み込み")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .frame(height: 44)
+                    .background(Capsule().fill(Theme.cobalt))
+                    .contentShape(Capsule())
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.paper)
+    }
+
+    // MARK: JS panel / auth presentation (v0.4.9)
+
+    private var jsAlertBinding: Binding<Bool> {
+        Binding(
+            get: { tab.jsPanel != nil && tab.jsPanel?.kind != .prompt },
+            set: { presented in
+                if !presented, let panel = tab.jsPanel {
+                    // Dismissed without a button (should not happen
+                    // for alerts, but never leave WebKit hanging).
+                    switch panel.kind {
+                    case .alert: panel.respondAlert()
+                    case .confirm: panel.respondConfirm(false)
+                    case .prompt: break
+                    }
+                    tab.jsPanel = nil
+                }
+            })
+    }
+
+    private var promptPanelBinding: Binding<JSPanelRequest?> {
+        Binding(
+            get: { tab.jsPanel?.kind == .prompt ? tab.jsPanel : nil },
+            set: { tab.jsPanel = $0 })
+    }
+
+    // MARK: Hardware keyboard shortcuts (v0.4.9, iPad)
+    //
+    // Zero-size invisible buttons carrying the shortcuts — the
+    // standard SwiftUI way to bind keys without a menu. The layer
+    // exists only while `shortcutsEnabled` (no sheet/cover up), so
+    // keys typed into other screens' fields never trigger browser
+    // actions. The address bar itself is a text field, but browsers
+    // treat these keys as commands there too, and so do we.
+
+    private var keyboardShortcuts: some View {
+        Group {
+            Button("新規タブ") { manager.newTab() }
+                .keyboardShortcut("t", modifiers: .command)
+            Button("タブを閉じる") { manager.closeTab(tab) }
+                .keyboardShortcut("w", modifiers: .command)
+            Button("アドレスバー") { addressFocused = true }
+                .keyboardShortcut("l", modifiers: .command)
+            Button("再読み込み") { tab.reload() }
+                .keyboardShortcut("r", modifiers: .command)
+            Button("ページ内検索") { findActive = true }
+                .keyboardShortcut("f", modifiers: .command)
+            Button("ブックマークに追加") { onAddBookmark() }
+                .keyboardShortcut("d", modifiers: .command)
+            Button("閉じたタブを開く") { manager.restoreClosedTab() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+            Button("戻る") { tab.goBack() }
+                .keyboardShortcut("[", modifiers: .command)
+            Button("進む") { tab.goForward() }
+                .keyboardShortcut("]", modifiers: .command)
+            Button("次のタブ") { manager.selectNextTab() }
+                .keyboardShortcut(.tab, modifiers: .control)
+            Button("前のタブ") { manager.selectPreviousTab() }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+            Button("タブ一覧") { onShowTabs() }
+                .keyboardShortcut("\\", modifiers: [.command, .shift])
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     // MARK: Address bar (M3-style full pill)
@@ -921,6 +1105,12 @@ private struct BrowserTabView: View {
                     } label: {
                         Label("新しいプライベートタブ", systemImage: "eye.slash")
                     }
+                    Button {
+                        manager.restoreClosedTab()
+                    } label: {
+                        Label("閉じたタブを開く", systemImage: "arrow.uturn.backward")
+                    }
+                    .disabled(manager.closedTabs.isEmpty)
                 }
                 Section {
                     Button(action: onShare) {
@@ -963,6 +1153,9 @@ private struct BrowserTabView: View {
                     }
                     Button(action: onShowPlaylist) {
                         Label("Playlist", systemImage: "play.rectangle.on.rectangle")
+                    }
+                    Button(action: onShowDownloads) {
+                        Label("ダウンロード", systemImage: "arrow.down.circle")
                     }
                 }
                 Section {
@@ -1227,5 +1420,106 @@ private struct TabStripChip: View {
                 }
                 if releasedOutside { onTearOff() }
             }
+    }
+}
+
+// MARK: - JavaScript prompt sheet (v0.4.9)
+
+/// The text-input panel for JS prompt(): message, one text field
+/// pre-filled with the page's default, OK returns the text and
+/// キャンセル returns nil — the exact semantics WebKit expects.
+private struct PromptSheet: View {
+    let message: String
+    let initialText: String
+    var onDone: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String = ""
+    @FocusState private var fieldFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("入力", text: $text)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($fieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit { finish(text) }
+                } header: {
+                    Text(message.isEmpty ? "ページからの入力要求" : message)
+                }
+            }
+            .navigationTitle("入力")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") { finish(nil) }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("OK") { finish(text) }
+                }
+            }
+            .onAppear {
+                text = initialText
+                fieldFocused = true
+            }
+        }
+    }
+
+    private func finish(_ value: String?) {
+        dismiss()
+        onDone(value)
+    }
+}
+
+// MARK: - HTTP authentication sheet (v0.4.9)
+
+/// Credential dialog for Basic/Digest challenges. The password is
+/// handed straight to WebKit's credential (session persistence) and
+/// is never stored by the app — no Keychain, no files.
+private struct AuthSheet: View {
+    let request: AuthRequest
+    var onDone: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var user = ""
+    @State private var password = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("ユーザー名", text: $user)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("パスワード", text: $password)
+                } header: {
+                    Text("\(request.host) がサインインを求めています")
+                } footer: {
+                    if let realm = request.realm, !realm.isEmpty {
+                        Text(realm)
+                    }
+                }
+            }
+            .navigationTitle("認証")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") {
+                        request.cancel()
+                        dismiss()
+                        onDone()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("サインイン") {
+                        request.respond(user: user, password: password)
+                        dismiss()
+                        onDone()
+                    }
+                    .disabled(user.isEmpty)
+                }
+            }
+        }
     }
 }

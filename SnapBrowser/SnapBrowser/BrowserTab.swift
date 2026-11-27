@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 import UIKit
+import Photos
 
 /// One browser tab: owns its WKWebView for the whole session (never
 /// destroyed on tab switch, like the Android version), plus its published
@@ -64,6 +65,44 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// Called on every finished live navigation (title, url) — history hook.
     var onVisit: ((String, String) -> Void)?
 
+    // MARK: - Delegate plumbing (v0.4.9)
+    //
+    // Until v0.4.8 the web view had NO uiDelegate: JavaScript
+    // alert/confirm/prompt were silently swallowed, window.open /
+    // target=_blank links did nothing at all, and there was no
+    // context menu, no download conversion and no error surface.
+    // The state below is what ContentView renders for those flows.
+
+    /// A pending JavaScript panel (alert / confirm / prompt).
+    @Published var jsPanel: JSPanelRequest?
+    /// A pending HTTP Basic/Digest authentication challenge.
+    @Published var authRequest: AuthRequest?
+    /// Last main-frame load failure, shown as an error card with a
+    /// reload button instead of a blank page. Cleared on the next
+    /// successful navigation.
+    @Published var loadError: String?
+    /// One-shot notice for flows that end outside the page
+    /// (external-scheme hand-off failures, image saves).
+    @Published var tabNotice: String?
+
+    /// window.open / target=_blank / context-menu "open in new tab".
+    var onOpenInNewTab: ((URL) -> Void)?
+    /// A navigation that turned into a download (WKDownload).
+    var downloadHandler: ((WKDownload) -> Void)?
+    /// Context-menu share (items for UIActivityViewController).
+    var shareHandler: (([Any]) -> Void)?
+    /// Context-menu "このページをスナップ".
+    var snapHandler: (() -> Void)?
+    /// Context-menu "Playlistに追加" for media links.
+    var playlistLinkHandler: ((String) -> Void)?
+
+    /// The link / image under the most recent touch, reported by the
+    /// probe script. WKContextMenuElementInfo exposes linkURL but
+    /// no image URL, so image context menus resolve through this.
+    private var lastTouchLink: String?
+    private var lastTouchImage: String?
+    private var lastTouchAt: Date = .distantPast
+
     private var observations: [NSKeyValueObservation] = []
 
     init(startURL: URL?, settings: AppSettings, isPrivate: Bool = false) {
@@ -79,6 +118,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
+        webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         if desktopMode {
             webView.customUserAgent = Self.desktopUserAgent
@@ -511,6 +551,33 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         observer.observe(document.documentElement,
                          { childList: true, subtree: true });
       }
+      // Context-element report (v0.4.9): WKContextMenuElementInfo
+      // carries no image URL, so the native context menu resolves
+      // images through the element under the most recent touch.
+      // Passive, like everything else in this probe.
+      document.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1) return;
+        var touch = e.touches[0];
+        var el = document.elementFromPoint(touch.clientX, touch.clientY)
+                 || e.target;
+        if (!el) return;
+        var link = '';
+        var node = el;
+        while (node && node !== document) {
+          if (node.tagName === 'A' && node.href) { link = node.href; break; }
+          node = node.parentElement;
+        }
+        var image = '';
+        if (el.tagName === 'IMG') {
+          image = el.currentSrc || el.src || '';
+        } else if (el.querySelector) {
+          var img = el.querySelector('img');
+          if (img) image = img.currentSrc || img.src || '';
+        }
+        if (link || image) {
+          post({ type: 'touchinfo', link: link, image: image });
+        }
+      }, { passive: true, capture: true });
     })()
     """#
 
@@ -819,6 +886,7 @@ extension BrowserTab: WKNavigationDelegate {
         let url = webView.url
         let title = webView.title
         Task { @MainActor in
+            self.loadError = nil
             self.capturePreview()
             await self.refreshDetectedMedia()
             self.scheduleDelayedProbe()
@@ -826,6 +894,408 @@ extension BrowserTab: WKNavigationDelegate {
                   self.archiveSnapshot == nil, !self.showsStartPage else { return }
             self.onVisit?(title ?? url.host ?? url.absoluteString, url.absoluteString)
         }
+    }
+
+    // MARK: Load failures (v0.4.9) — an error card, never a blank page
+
+    nonisolated func webView(_ webView: WKWebView,
+                             didFailProvisionalNavigation navigation: WKNavigation!,
+                             withError error: Error) {
+        recordLoadFailure(error)
+    }
+
+    nonisolated func webView(_ webView: WKWebView,
+                             didFail navigation: WKNavigation!,
+                             withError error: Error) {
+        recordLoadFailure(error)
+    }
+
+    private nonisolated func recordLoadFailure(_ error: Error) {
+        let nsError = error as NSError
+        // A cancelled load (user stopped it, or a new navigation
+        // replaced it) is not a failure and must not flash an error.
+        guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled)
+        else { return }
+        let message = error.localizedDescription
+        Task { @MainActor in
+            self.loadError = message
+        }
+    }
+
+    // MARK: Navigation policy (v0.4.9) — external schemes + downloads
+
+    nonisolated func webView(_ webView: WKWebView,
+                             decidePolicyFor navigationAction: WKNavigationAction,
+                             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        if navigationAction.shouldPerformDownload {
+            decisionHandler(.download)
+            return
+        }
+        let scheme = url.scheme?.lowercased() ?? ""
+        let inPageSchemes: Set<String> = ["http", "https", "about", "data", "file", "blob"]
+        if !scheme.isEmpty, !inPageSchemes.contains(scheme) {
+            // tel: / mailto: / sms: / app deep links: hand over to
+            // the OS and never navigate the web view there. A failed
+            // hand-off is reported, not swallowed.
+            decisionHandler(.cancel)
+            Task { @MainActor in
+                UIApplication.shared.open(url, options: [:]) { success in
+                    if !success {
+                        Task { @MainActor in
+                            self.tabNotice = "このリンクを開けるアプリがありませんでした"
+                        }
+                    }
+                }
+            }
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    nonisolated func webView(_ webView: WKWebView,
+                             decidePolicyFor navigationResponse: WKNavigationResponse,
+                             decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if !navigationResponse.canShowMIMEType {
+            decisionHandler(.download)
+            return
+        }
+        if let http = navigationResponse.response as? HTTPURLResponse,
+           let disposition = http.value(forHTTPHeaderField: "Content-Disposition"),
+           disposition.lowercased().contains("attachment") {
+            decisionHandler(.download)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    nonisolated func webView(_ webView: WKWebView,
+                             navigationAction: WKNavigationAction,
+                             didBecome download: WKDownload) {
+        Task { @MainActor in
+            self.downloadHandler?(download)
+        }
+    }
+
+    nonisolated func webView(_ webView: WKWebView,
+                             navigationResponse: WKNavigationResponse,
+                             didBecome download: WKDownload) {
+        Task { @MainActor in
+            self.downloadHandler?(download)
+        }
+    }
+
+    // MARK: Authentication (v0.4.9) — Basic/Digest credential dialog
+
+    nonisolated func webView(_ webView: WKWebView,
+                             didReceive challenge: URLAuthenticationChallenge,
+                             completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let method = challenge.protectionSpace.authenticationMethod
+        let credentialMethods: Set<String> = [
+            NSURLAuthenticationMethodHTTPBasic,
+            NSURLAuthenticationMethodHTTPDigest,
+            NSURLAuthenticationMethodNTLM,
+            NSURLAuthenticationMethodHTMLForm
+        ]
+        guard credentialMethods.contains(method) else {
+            // Server trust and everything else: WebKit's default
+            // validation applies — never rubber-stamp certificates.
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        // A retry after a rejected credential: don't loop dialogs.
+        guard challenge.previousFailureCount == 0 else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        let host = challenge.protectionSpace.host
+        let realm = challenge.protectionSpace.realm
+        Task { @MainActor in
+            // One dialog at a time; a second challenge is cancelled
+            // rather than stacked.
+            guard self.authRequest == nil else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            self.authRequest = AuthRequest(host: host, realm: realm) { credential in
+                if let credential {
+                    completionHandler(.useCredential, credential)
+                } else {
+                    completionHandler(.cancelAuthenticationChallenge, nil)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - JS panel / auth requests (v0.4.9)
+//
+// WebKit completion handlers must be called exactly once or the
+// page's JavaScript hangs forever. These request objects own the
+// handler, ignore double responses, and — as a last resort — answer
+// with the "cancel" value from deinit if the UI dropped them.
+
+final class JSPanelRequest: Identifiable {
+    enum Kind { case alert, confirm, prompt }
+    let id = UUID()
+    let kind: Kind
+    let message: String
+    let defaultText: String
+    private var responded = false
+    private let alertHandler: (() -> Void)?
+    private let confirmHandler: ((Bool) -> Void)?
+    private let promptHandler: ((String?) -> Void)?
+
+    private init(kind: Kind, message: String, defaultText: String,
+                 alertHandler: (() -> Void)? = nil,
+                 confirmHandler: ((Bool) -> Void)? = nil,
+                 promptHandler: ((String?) -> Void)? = nil) {
+        self.kind = kind
+        self.message = message
+        self.defaultText = defaultText
+        self.alertHandler = alertHandler
+        self.confirmHandler = confirmHandler
+        self.promptHandler = promptHandler
+    }
+
+    static func alert(message: String, handler: @escaping () -> Void) -> JSPanelRequest {
+        JSPanelRequest(kind: .alert, message: message, defaultText: "", alertHandler: handler)
+    }
+
+    static func confirm(message: String, handler: @escaping (Bool) -> Void) -> JSPanelRequest {
+        JSPanelRequest(kind: .confirm, message: message, defaultText: "", confirmHandler: handler)
+    }
+
+    static func prompt(message: String, defaultText: String,
+                       handler: @escaping (String?) -> Void) -> JSPanelRequest {
+        JSPanelRequest(kind: .prompt, message: message, defaultText: defaultText,
+                       promptHandler: handler)
+    }
+
+    func respondAlert() {
+        guard !responded else { return }
+        responded = true
+        alertHandler?()
+    }
+
+    func respondConfirm(_ value: Bool) {
+        guard !responded else { return }
+        responded = true
+        confirmHandler?(value)
+    }
+
+    func respondPrompt(_ value: String?) {
+        guard !responded else { return }
+        responded = true
+        promptHandler?(value)
+    }
+
+    deinit {
+        guard !responded else { return }
+        alertHandler?()
+        confirmHandler?(false)
+        promptHandler?(nil)
+    }
+}
+
+final class AuthRequest: Identifiable {
+    let id = UUID()
+    let host: String
+    let realm: String?
+    private var responded = false
+    private let handler: (URLCredential?) -> Void
+
+    init(host: String, realm: String?, handler: @escaping (URLCredential?) -> Void) {
+        self.host = host
+        self.realm = realm
+        self.handler = handler
+    }
+
+    func respond(user: String, password: String) {
+        guard !responded else { return }
+        responded = true
+        handler(URLCredential(user: user, password: password, persistence: .forSession))
+    }
+
+    func cancel() {
+        guard !responded else { return }
+        responded = true
+        handler(nil)
+    }
+
+    deinit {
+        if !responded { handler(nil) }
+    }
+}
+
+// MARK: - WKUIDelegate (v0.4.9): JS panels, new-window links, context menus
+
+extension BrowserTab: WKUIDelegate {
+    nonisolated func webView(_ webView: WKWebView,
+                             runJavaScriptAlertPanelWithMessage message: String,
+                             initiatedByFrame frame: WKFrameInfo,
+                             completionHandler: @escaping () -> Void) {
+        Task { @MainActor in
+            self.jsPanel = .alert(message: message, handler: completionHandler)
+        }
+    }
+
+    nonisolated func webView(_ webView: WKWebView,
+                             runJavaScriptConfirmPanelWithMessage message: String,
+                             initiatedByFrame frame: WKFrameInfo,
+                             completionHandler: @escaping (Bool) -> Void) {
+        Task { @MainActor in
+            self.jsPanel = .confirm(message: message, handler: completionHandler)
+        }
+    }
+
+    nonisolated func webView(_ webView: WKWebView,
+                             runJavaScriptTextInputPanelWithPrompt prompt: String,
+                             defaultText: String?,
+                             initiatedByFrame frame: WKFrameInfo,
+                             completionHandler: @escaping (String?) -> Void) {
+        Task { @MainActor in
+            self.jsPanel = .prompt(message: prompt, defaultText: defaultText ?? "",
+                                   handler: completionHandler)
+        }
+    }
+
+    /// window.open / target="_blank": WebKit hands us the request and
+    /// expects a web view back; the standard browser answer is a new
+    /// tab, so the URL is routed to the tab manager and nil returned.
+    nonisolated func webView(_ webView: WKWebView,
+                             createWebViewWith configuration: WKWebViewConfiguration,
+                             for navigationAction: WKNavigationAction,
+                             windowFeatures: WKWindowFeatures) -> WKWebView? {
+        let url = navigationAction.request.url
+        Task { @MainActor in
+            if let url {
+                self.onOpenInNewTab?(url)
+            }
+        }
+        return nil
+    }
+
+    // MARK: Context menus (links / images)
+
+    nonisolated func webView(_ webView: WKWebView,
+                             contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
+                             completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
+        let linkURL = elementInfo.linkURL
+        Task { @MainActor in
+            completionHandler(self.contextMenuConfiguration(linkURL: linkURL))
+        }
+    }
+
+    private func contextMenuConfiguration(linkURL: URL?) -> UIContextMenuConfiguration? {
+        if let linkURL {
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                UIMenu(title: "", children: self.linkMenuActions(for: linkURL))
+            }
+        }
+        // Images: the element info has no URL, so fall back to the
+        // probe's most recent touch report (fresh within 3 seconds).
+        if Date().timeIntervalSince(lastTouchAt) < 3,
+           let image = lastTouchImage, let imageURL = URL(string: image),
+           imageURL.scheme == "http" || imageURL.scheme == "https" {
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                UIMenu(title: "", children: self.imageMenuActions(for: imageURL))
+            }
+        }
+        return nil
+    }
+
+    private func linkMenuActions(for url: URL) -> [UIMenuElement] {
+        var actions: [UIMenuElement] = [
+            UIAction(title: "新しいタブで開く", image: UIImage(systemName: "plus.square.on.square")) { _ in
+                Task { @MainActor in self.onOpenInNewTab?(url) }
+            },
+            UIAction(title: "リンクをコピー", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIPasteboard.general.url = url
+            },
+            UIAction(title: "共有…", image: UIImage(systemName: "square.and.arrow.up")) { _ in
+                Task { @MainActor in self.shareHandler?([url]) }
+            },
+            UIAction(title: "このページをスナップ", image: UIImage(systemName: "camera.aperture")) { _ in
+                Task { @MainActor in self.snapHandler?() }
+            }
+        ]
+        if PlaylistMedia.isMediaURL(url.absoluteString) {
+            actions.append(UIAction(title: "Playlistに追加",
+                                    image: UIImage(systemName: "video.badge.plus")) { _ in
+                Task { @MainActor in self.playlistLinkHandler?(url.absoluteString) }
+            })
+        }
+        return actions
+    }
+
+    private func imageMenuActions(for url: URL) -> [UIMenuElement] {
+        [
+            UIAction(title: "画像を保存", image: UIImage(systemName: "square.and.arrow.down")) { _ in
+                Task { @MainActor in await self.saveImage(at: url) }
+            },
+            UIAction(title: "画像をコピー", image: UIImage(systemName: "doc.on.doc")) { _ in
+                Task { @MainActor in await self.copyImage(at: url) }
+            },
+            UIAction(title: "新しいタブで開く", image: UIImage(systemName: "plus.square.on.square")) { _ in
+                Task { @MainActor in self.onOpenInNewTab?(url) }
+            }
+        ]
+    }
+
+    // MARK: Image save / copy
+
+    /// Downloads the image data (no page cookies, like playlist
+    /// downloads) and saves it to the photo library. When photo
+    /// access is not granted, the file lands in Documents/Downloads
+    /// instead and the notice says so — never a silent failure.
+    private func saveImage(at url: URL) async {
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              UIImage(data: data) != nil else {
+            tabNotice = "画像を取得できませんでした"
+            return
+        }
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        if status == .authorized || status == .limited {
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    let request = PHAssetCreationRequest.forAsset()
+                    request.addResource(with: .photo, data: data, options: nil)
+                }
+                tabNotice = "画像を写真に保存しました"
+            } catch {
+                saveImageDataToDownloads(data, url: url)
+            }
+        } else {
+            saveImageDataToDownloads(data, url: url)
+        }
+    }
+
+    private func saveImageDataToDownloads(_ data: Data, url: URL) {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let folder = docs.appendingPathComponent("Downloads", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let name = url.lastPathComponent.isEmpty ? "image" : url.lastPathComponent
+        let destination = folder.appendingPathComponent(name)
+        do {
+            try data.write(to: destination, options: .atomic)
+            tabNotice = "写真へのアクセスがないため、ダウンロードに保存しました"
+        } catch {
+            tabNotice = "画像の保存に失敗しました"
+        }
+    }
+
+    private func copyImage(at url: URL) async {
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = UIImage(data: data) else {
+            tabNotice = "画像を取得できませんでした"
+            return
+        }
+        UIPasteboard.general.image = image
+        tabNotice = "画像をコピーしました"
     }
 }
 
@@ -846,6 +1316,14 @@ extension BrowserTab: WKScriptMessageHandler {
         case "changed":
             Task { @MainActor in
                 self.scheduleProbeRefresh()
+            }
+        case "touchinfo":
+            let link = body["link"] as? String ?? ""
+            let image = body["image"] as? String ?? ""
+            Task { @MainActor in
+                self.lastTouchLink = link.isEmpty ? nil : link
+                self.lastTouchImage = image.isEmpty ? nil : image
+                self.lastTouchAt = Date()
             }
         default:
             break

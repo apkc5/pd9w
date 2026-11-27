@@ -252,6 +252,62 @@ final class PlaylistStore: NSObject, ObservableObject {
         persist()
     }
 
+    // MARK: - ZIP export (v0.4.9)
+
+    struct ZipExportResult {
+        var url: URL
+        var count: Int
+        var totalBytes: Int64
+    }
+
+    /// Packages every downloaded file into ONE zip in the caches
+    /// directory (temporary by design — the caller deletes it after
+    /// the share sheet finishes). Entries are stored uncompressed
+    /// and streamed, so large libraries never load into memory.
+    /// Non-downloaded items are excluded. Entry names are
+    /// "01_<title>.<ext>", sanitised and de-duplicated.
+    func exportDownloadedAsZip() async throws -> ZipExportResult? {
+        let downloaded = items.filter { $0.state == .downloaded }
+        var sources: [(file: URL, name: String)] = []
+        var usedNames = Set<String>()
+        for (index, item) in downloaded.enumerated() {
+            guard let file = localFileURL(for: item) else { continue }
+            let ext = file.pathExtension.isEmpty ? "mp4" : file.pathExtension
+            var base = item.title
+                .components(separatedBy: CharacterSet(charactersIn: "/:\\?%*|\"<>"))
+                .joined(separator: "_")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if base.isEmpty { base = "video" }
+            var name = String(format: "%02d_%@.%@", index + 1, base, ext)
+            var counter = 2
+            while usedNames.contains(name) {
+                name = String(format: "%02d_%@ (%d).%@", index + 1, base, counter, ext)
+                counter += 1
+            }
+            usedNames.insert(name)
+            sources.append((file, name))
+        }
+        guard !sources.isEmpty else { return nil }
+
+        let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let folder = caches.appendingPathComponent("PlaylistExport", isDirectory: true)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.dateFormat = "yyyyMMdd-HHmmss"
+        let zipURL = folder.appendingPathComponent("playlist-\(stamp.string(from: Date())).zip")
+        let totalBytes = sources.reduce(Int64(0)) { sum, source in
+            sum + ((try? fileManager.attributesOfItem(atPath: source.file.path)[.size]) as? Int64 ?? 0)
+        }
+        // The writer does blocking file IO; keep it off the main actor.
+        let writer = try ZipWriter(outputURL: zipURL)
+        for source in sources {
+            try writer.addFile(at: source.file, archiveName: source.name)
+        }
+        try writer.finish()
+        return ZipExportResult(url: zipURL, count: sources.count, totalBytes: totalBytes)
+    }
+
     var totalDownloadedBytes: Int64 {
         items.reduce(0) { $0 + ($1.fileBytes ?? 0) }
     }
