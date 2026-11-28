@@ -13,6 +13,12 @@ struct DetectedMedia: Identifiable, Equatable {
         let lower = url.lowercased()
         return lower.hasPrefix("http://") || lower.hasPrefix("https://")
     }
+    /// An HLS stream URL (downloaded by assembling its segments,
+    /// v0.4.14 — see HLSDownloader).
+    var isM3U8: Bool {
+        guard isHTTP, let parsed = URL(string: url) else { return false }
+        return parsed.pathExtension.lowercased() == "m3u8"
+    }
 }
 
 /// Shared media-URL helpers (menu add / bookmark integration / titles).
@@ -54,6 +60,10 @@ struct PlaylistItem: Identifiable, Codable, Equatable {
     var thumbnailFileName: String?
     var fileBytes: Int64?
     var errorMessage: String?
+    /// How the downloaded payload is stored (v0.4.14): nil for a
+    /// plain single file; "hls-ts" when localFileName points at a
+    /// playlist.m3u8 inside a per-item folder of TS segments.
+    var streamKind: String?
 }
 
 /// Playlist (v0.4.6, ported from the Android version): a shelf of
@@ -65,9 +75,11 @@ struct PlaylistItem: Identifiable, Codable, Equatable {
 /// clear-data actions never touch this directory: they clear history
 /// and WKWebsiteDataStore only, and this store lives in Documents.
 ///
-/// Downloads use a plain URLSession (no page cookies), so media
-/// behind a login wall may fail — failures are kept as an explicit
-/// failed state on the item, never silently dropped.
+/// Downloads carry the page's cookies / UA / Referer (v0.4.14,
+/// via requestContextProvider), so login-walled media has its
+/// real chance; failures are kept as an explicit failed state on
+/// the item (with the HTTP status when there is one), never
+/// silently dropped.
 final class PlaylistStore: NSObject, ObservableObject {
     @Published private(set) var items: [PlaylistItem] = []
     /// Transient per-item download progress: 0...1, or -1 when the
@@ -85,6 +97,45 @@ final class PlaylistStore: NSObject, ObservableObject {
                           delegateQueue: queue)
     }()
 
+    /// Extra headers for media requests (v0.4.14): BrowserModel
+    /// installs a provider that reads the ACTIVE tab's cookie
+    /// store + user agent, so downloads go out the way the page
+    /// itself would fetch — the fix for the structural 403s the
+    /// plain-URLSession version produced on login-walled or
+    /// hotlink-protected media (research §6.2).
+    var requestContextProvider: ((URL) async -> [String: String])?
+
+    /// In-flight HLS assembly tasks (v0.4.14), keyed by item id.
+    private var hlsTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// In-flight blob: transfers (v0.4.14): bytes stream in from
+    /// the page into a staging file, like DownloadStore's manual
+    /// transfers, so memory stays flat at any size.
+    private var blobStaging: [UUID: BlobStaging] = [:]
+
+    struct BlobStaging {
+        var stagingURL: URL
+        var handle: FileHandle
+        var received: Int64
+        var expected: Int64?
+        var fileName: String
+    }
+
+    /// A request for `url` carrying the provider's headers plus
+    /// the item's page as Referer.
+    func makeRequest(for url: URL, pageURL: String?) async -> URLRequest {
+        var request = URLRequest(url: url)
+        if let provider = requestContextProvider {
+            for (field, value) in await provider(url) {
+                request.setValue(value, forHTTPHeaderField: field)
+            }
+        }
+        if let pageURL, !pageURL.isEmpty {
+            request.setValue(pageURL, forHTTPHeaderField: "Referer")
+        }
+        return request
+    }
+
     var directoryURL: URL {
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return docs.appendingPathComponent("Playlist", isDirectory: true)
@@ -100,6 +151,13 @@ final class PlaylistStore: NSObject, ObservableObject {
     // MARK: - Persistence
 
     private func load() {
+        // Leftover blob staging files from a killed session can
+        // never be resumed; clear them out.
+        if let names = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) {
+            for name in names where name.hasPrefix(".partial-") {
+                try? fileManager.removeItem(at: directoryURL.appendingPathComponent(name))
+            }
+        }
         guard let data = try? Data(contentsOf: indexURL),
               let decoded = try? JSONDecoder.snapshotDecoder.decode([PlaylistItem].self, from: data)
         else {
@@ -157,7 +215,8 @@ final class PlaylistStore: NSObject, ObservableObject {
             localFileName: nil,
             thumbnailFileName: nil,
             fileBytes: nil,
-            errorMessage: nil)
+            errorMessage: nil,
+            streamKind: nil)
         items.insert(item, at: 0)
         persist()
         return true
@@ -201,7 +260,8 @@ final class PlaylistStore: NSObject, ObservableObject {
                 localFileName: nil,
                 thumbnailFileName: nil,
                 fileBytes: nil,
-                errorMessage: nil))
+                errorMessage: nil,
+                streamKind: nil))
             outcome.added += 1
         }
         if !newItems.isEmpty {
@@ -213,14 +273,25 @@ final class PlaylistStore: NSObject, ObservableObject {
 
     // MARK: - Removal
 
-    func remove(_ item: PlaylistItem) {
-        cancelDownload(item)
-        if let name = item.localFileName {
+    /// Deletes an item's downloaded payload. An "hls-ts" item's
+    /// localFileName is "<id>/playlist.m3u8" — the whole segment
+    /// folder goes, not just the playlist file.
+    private func removeLocalFiles(for item: PlaylistItem) {
+        if item.streamKind == "hls-ts" {
+            try? fileManager.removeItem(
+                at: directoryURL.appendingPathComponent(item.id.uuidString,
+                                                         isDirectory: true))
+        } else if let name = item.localFileName {
             try? fileManager.removeItem(at: directoryURL.appendingPathComponent(name))
         }
         if let thumb = item.thumbnailFileName {
             try? fileManager.removeItem(at: directoryURL.appendingPathComponent(thumb))
         }
+    }
+
+    func remove(_ item: PlaylistItem) {
+        cancelDownload(item)
+        removeLocalFiles(for: item)
         items.removeAll { $0.id == item.id }
         progress[item.id] = nil
         persist()
@@ -234,13 +305,9 @@ final class PlaylistStore: NSObject, ObservableObject {
             cancelDownload(item)
         }
         for index in items.indices {
-            if let name = items[index].localFileName {
-                try? fileManager.removeItem(at: directoryURL.appendingPathComponent(name))
-            }
-            if let thumb = items[index].thumbnailFileName {
-                try? fileManager.removeItem(at: directoryURL.appendingPathComponent(thumb))
-            }
+            removeLocalFiles(for: items[index])
             items[index].localFileName = nil
+            items[index].streamKind = nil
             items[index].thumbnailFileName = nil
             items[index].fileBytes = nil
             items[index].errorMessage = nil
@@ -278,6 +345,24 @@ final class PlaylistStore: NSObject, ObservableObject {
                 .joined(separator: "_")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if base.isEmpty { base = "video" }
+            if item.streamKind == "hls-ts" {
+                // The item is a folder of segments + playlist:
+                // export every file under one folder entry name.
+                var folderName = String(format: "%02d_%@", index + 1, base)
+                var counter = 2
+                while usedNames.contains(folderName) {
+                    folderName = String(format: "%02d_%@ (%d)", index + 1, base, counter)
+                    counter += 1
+                }
+                usedNames.insert(folderName)
+                let folder = file.deletingLastPathComponent()
+                let entries = (try? fileManager.contentsOfDirectory(
+                    at: folder, includingPropertiesForKeys: nil)) ?? []
+                for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                    sources.append((entry, "\(folderName)/\(entry.lastPathComponent)"))
+                }
+                continue
+            }
             var name = String(format: "%02d_%@.%@", index + 1, base, ext)
             var counter = 2
             while usedNames.contains(name) {
@@ -348,26 +433,251 @@ final class PlaylistStore: NSObject, ObservableObject {
             persist()
             return
         }
-        // An .m3u8 payload is a segment playlist, not a media file:
-        // downloading it would produce something unplayable, so say
-        // so up front instead of faking a download.
-        if url.pathExtension.lowercased() == "m3u8" {
-            items[index].state = .failed
-            items[index].errorMessage = "HLS（m3u8）はダウンロードできません。ストリーミング再生のみ対応です"
-            persist()
-            return
-        }
         items[index].state = .downloading
         items[index].errorMessage = nil
         progress[item.id] = 0
         persist()
 
-        let task = session.downloadTask(with: url)
-        task.taskDescription = item.id.uuidString
-        tasksLock.lock()
-        tasks[item.id] = task
-        tasksLock.unlock()
-        task.resume()
+        let itemID = item.id
+        let pageURL = items[index].pageURL
+        // HLS streams are assembled from their segments instead of
+        // downloaded as one file (v0.4.14 — HLSDownloader).
+        if url.pathExtension.lowercased() == "m3u8" {
+            startHLSDownload(itemID: itemID, url: url, pageURL: pageURL)
+            return
+        }
+        // The request is built asynchronously (cookies come from
+        // the WebView's store); the task is created on the main
+        // queue afterwards, and only if the item is still meant
+        // to be downloading (the user may have cancelled).
+        Task { [weak self] in
+            guard let self else { return }
+            let request = await self.makeRequest(for: url, pageURL: pageURL)
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.items.first(where: { $0.id == itemID })?.state == .downloading
+                else { return }
+                let task = self.session.downloadTask(with: request)
+                task.taskDescription = itemID.uuidString
+                self.tasksLock.lock()
+                self.tasks[itemID] = task
+                self.tasksLock.unlock()
+                task.resume()
+            }
+        }
+    }
+
+    // MARK: - HLS downloads (v0.4.14)
+
+    private func startHLSDownload(itemID: UUID, url: URL, pageURL: String?) {
+        let downloader = HLSDownloader(makeRequest: { [weak self] segmentURL in
+            await self?.makeRequest(for: segmentURL, pageURL: pageURL)
+                ?? URLRequest(url: segmentURL)
+        })
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let output = try await downloader.download(from: url) { done, total in
+                    DispatchQueue.main.async { [weak self] in
+                        self?.progress[itemID] = total > 0
+                            ? Double(done) / Double(total) : -1
+                    }
+                }
+                DispatchQueue.main.async { [weak self] in
+                    self?.finishHLSDownload(itemID: itemID, output: output)
+                }
+            } catch is CancellationError {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.hlsTasks[itemID] = nil
+                    self.progress[itemID] = nil
+                    self.updateItem(itemID) {
+                        if $0.state == .downloading { $0.state = .notDownloaded }
+                    }
+                }
+            } catch let failure as HLSDownloadFailure {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.hlsTasks[itemID] = nil
+                    self.progress[itemID] = nil
+                    self.updateItem(itemID) {
+                        $0.state = .failed
+                        $0.errorMessage = failure.message
+                    }
+                }
+            } catch {
+                let cancelled = Task.isCancelled
+                let message = error.localizedDescription
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.hlsTasks[itemID] = nil
+                    self.progress[itemID] = nil
+                    self.updateItem(itemID) {
+                        if cancelled {
+                            if $0.state == .downloading { $0.state = .notDownloaded }
+                        } else {
+                            $0.state = .failed
+                            $0.errorMessage = message
+                        }
+                    }
+                }
+            }
+        }
+        hlsTasks[itemID] = task
+    }
+
+    /// Moves an assembled HLS output (single .mp4, or a segment
+    /// folder + local playlist) into the Playlist directory.
+    private func finishHLSDownload(itemID: UUID, output: HLSDownloadOutput) {
+        hlsTasks[itemID] = nil
+        progress[itemID] = nil
+        guard items.contains(where: { $0.id == itemID }) else {
+            try? fileManager.removeItem(at: output.url)
+            return
+        }
+        do {
+            try fileManager.createDirectory(at: directoryURL,
+                                            withIntermediateDirectories: true)
+            if output.isFolder {
+                let folderName = itemID.uuidString
+                let dest = directoryURL.appendingPathComponent(folderName,
+                                                               isDirectory: true)
+                if fileManager.fileExists(atPath: dest.path) {
+                    try fileManager.removeItem(at: dest)
+                }
+                try fileManager.moveItem(at: output.url, to: dest)
+                updateItem(itemID) {
+                    $0.state = .downloaded
+                    $0.localFileName = "\(folderName)/playlist.m3u8"
+                    $0.streamKind = "hls-ts"
+                    $0.fileBytes = output.totalBytes
+                    $0.errorMessage = nil
+                }
+                generateThumbnail(itemID: itemID,
+                                  fileURL: dest.appendingPathComponent("playlist.m3u8"))
+            } else {
+                let fileName = "\(itemID.uuidString).mp4"
+                let dest = directoryURL.appendingPathComponent(fileName)
+                if fileManager.fileExists(atPath: dest.path) {
+                    try fileManager.removeItem(at: dest)
+                }
+                try fileManager.moveItem(at: output.url, to: dest)
+                updateItem(itemID) {
+                    $0.state = .downloaded
+                    $0.localFileName = fileName
+                    $0.streamKind = nil
+                    $0.fileBytes = output.totalBytes
+                    $0.errorMessage = nil
+                }
+                generateThumbnail(itemID: itemID, fileURL: dest)
+            }
+        } catch {
+            try? fileManager.removeItem(at: output.url)
+            updateItem(itemID) {
+                $0.state = .failed
+                $0.errorMessage = "保存に失敗: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    // MARK: - Blob transfers (v0.4.14)
+
+    /// Creates an item whose bytes stream in from the page itself
+    /// (a plain Blob, classified as such in BrowserTab) — the
+    /// staging-file pattern from DownloadStore, so memory stays
+    /// flat. No size cap: the user's standing call is unlimited.
+    @discardableResult
+    func beginBlobItem(title: String, url: String, pageURL: String?,
+                       fileName: String, expectedBytes: Int64?) -> UUID {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let item = PlaylistItem(
+            id: UUID(),
+            title: trimmed.isEmpty ? PlaylistMedia.defaultTitle(for: url) : trimmed,
+            url: url,
+            pageURL: pageURL,
+            addedAt: Date(),
+            state: .downloading,
+            localFileName: nil,
+            thumbnailFileName: nil,
+            fileBytes: nil,
+            errorMessage: nil,
+            streamKind: nil)
+        items.insert(item, at: 0)
+        progress[item.id] = 0
+        persist()
+        do {
+            try fileManager.createDirectory(at: directoryURL,
+                                            withIntermediateDirectories: true)
+            let staging = directoryURL.appendingPathComponent(".partial-\(item.id.uuidString)")
+            fileManager.createFile(atPath: staging.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: staging)
+            blobStaging[item.id] = BlobStaging(stagingURL: staging,
+                                               handle: handle,
+                                               received: 0,
+                                               expected: expectedBytes,
+                                               fileName: fileName)
+        } catch {
+            failBlobItem(itemID: item.id, message: "保存を開始できませんでした")
+        }
+        return item.id
+    }
+
+    func appendBlobChunk(itemID: UUID, data: Data) {
+        guard var staging = blobStaging[itemID] else { return }
+        do {
+            try staging.handle.write(contentsOf: data)
+        } catch {
+            failBlobItem(itemID: itemID, message: "書き込みに失敗しました")
+            return
+        }
+        staging.received += Int64(data.count)
+        blobStaging[itemID] = staging
+        if let expected = staging.expected, expected > 0 {
+            progress[itemID] = Double(staging.received) / Double(expected)
+        }
+    }
+
+    func finishBlobItem(itemID: UUID) {
+        guard let staging = blobStaging.removeValue(forKey: itemID) else { return }
+        try? staging.handle.close()
+        let ext = (staging.fileName as NSString).pathExtension.lowercased()
+        let finalName = "\(itemID.uuidString).\(ext.isEmpty ? "mp4" : ext)"
+        let dest = directoryURL.appendingPathComponent(finalName)
+        do {
+            if fileManager.fileExists(atPath: dest.path) {
+                try fileManager.removeItem(at: dest)
+            }
+            try fileManager.moveItem(at: staging.stagingURL, to: dest)
+        } catch {
+            updateItem(itemID) {
+                $0.state = .failed
+                $0.errorMessage = "保存に失敗しました"
+            }
+            progress[itemID] = nil
+            return
+        }
+        progress[itemID] = nil
+        updateItem(itemID) {
+            $0.state = .downloaded
+            $0.localFileName = finalName
+            $0.fileBytes = staging.received
+            $0.errorMessage = nil
+        }
+        generateThumbnail(itemID: itemID, fileURL: dest)
+    }
+
+    func failBlobItem(itemID: UUID, message: String) {
+        if let staging = blobStaging.removeValue(forKey: itemID) {
+            try? staging.handle.close()
+            try? fileManager.removeItem(at: staging.stagingURL)
+        }
+        progress[itemID] = nil
+        updateItem(itemID) {
+            if $0.state == .downloading {
+                $0.state = .failed
+                $0.errorMessage = message
+            }
+        }
     }
 
     func cancelDownload(_ item: PlaylistItem) {
@@ -376,6 +686,13 @@ final class PlaylistStore: NSObject, ObservableObject {
         tasks[item.id] = nil
         tasksLock.unlock()
         task?.cancel()
+        if let hls = hlsTasks.removeValue(forKey: item.id) {
+            hls.cancel()
+        }
+        if let staging = blobStaging.removeValue(forKey: item.id) {
+            try? staging.handle.close()
+            try? fileManager.removeItem(at: staging.stagingURL)
+        }
         if let index = items.firstIndex(where: { $0.id == item.id }),
            items[index].state == .downloading {
             items[index].state = .notDownloaded
@@ -423,6 +740,24 @@ extension PlaylistStore: URLSessionDownloadDelegate {
                     didFinishDownloadingTo location: URL) {
         guard let idString = downloadTask.taskDescription,
               let id = UUID(uuidString: idString) else { return }
+        // An HTTP error status means the "file" is an error page:
+        // fail with the status in the reason instead of saving it
+        // as if it were media (v0.4.14).
+        if let http = downloadTask.response as? HTTPURLResponse,
+           http.statusCode >= 400 {
+            let message = http.statusCode == 403
+                ? "保存に失敗しました（HTTP 403：アクセスが拒否されました。要ログインの可能性）"
+                : "保存に失敗しました（HTTP \(http.statusCode)）"
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.progress[id] = nil
+                self.updateItem(id) {
+                    $0.state = .failed
+                    $0.errorMessage = message
+                }
+            }
+            return
+        }
         // The temp file is deleted when this callback returns, so the
         // move happens here, synchronously, on the delegate queue.
         let ext: String = {
