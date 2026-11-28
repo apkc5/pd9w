@@ -62,6 +62,8 @@ final class AppSettings: ObservableObject {
         static let hiddenSuggestionURLs = "settings.hiddenSuggestionURLs"
         static let homePet = "settings.homePet"
         static let hiddenShortcutURLs = "settings.hiddenShortcutURLs"
+        static let shieldsEnabled = "settings.shieldsEnabled"
+        static let shieldsDisabledSites = "settings.shieldsDisabledSites"
     }
 
     @Published var searchEngine: SearchEngine {
@@ -123,6 +125,49 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Shields master switch (v0.4.14). ON by default: unlike the
+    /// search suggestions nothing leaves the device, so there is
+    /// no opt-in reason to default off (Brave ships Shields on).
+    @Published var shieldsEnabled: Bool {
+        didSet { UserDefaults.standard.set(shieldsEnabled, forKey: Keys.shieldsEnabled) }
+    }
+
+    /// Site keys (host with a leading "www." stripped) where the
+    /// user turned Shields off for that site (v0.4.14). The set is
+    /// compiled into the rule list as ignore-previous-rules
+    /// entries by ShieldsController; persisted in UserDefaults.
+    @Published private(set) var shieldsDisabledSites: Set<String> {
+        didSet {
+            UserDefaults.standard.set(shieldsDisabledSites.sorted(),
+                                      forKey: Keys.shieldsDisabledSites)
+        }
+    }
+
+    /// The per-site key for a host: "www.example.com" and
+    /// "example.com" are the same site for exemption purposes.
+    static func shieldsSiteKey(host: String) -> String {
+        host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    /// Whether blocking is in force for a page on this host:
+    /// the master switch is on and the site is not exempted.
+    func isShieldsActive(forHost host: String) -> Bool {
+        shieldsEnabled && !shieldsDisabledSites.contains(Self.shieldsSiteKey(host: host))
+    }
+
+    func setShieldsActive(_ active: Bool, forHost host: String) {
+        let key = Self.shieldsSiteKey(host: host)
+        if active {
+            shieldsDisabledSites.remove(key)
+        } else {
+            shieldsDisabledSites.insert(key)
+        }
+    }
+
+    func resetShieldsDisabledSites() {
+        shieldsDisabledSites = []
+    }
+
     func hideShortcutURL(_ url: String) {
         hiddenShortcutURLs.insert(url)
     }
@@ -152,6 +197,11 @@ final class AppSettings: ObservableObject {
         hiddenSuggestionURLs = Set(defaults.stringArray(forKey: Keys.hiddenSuggestionURLs) ?? [])
         homePet = HomePet(rawValue: defaults.string(forKey: Keys.homePet) ?? "") ?? .cat
         hiddenShortcutURLs = Set(defaults.stringArray(forKey: Keys.hiddenShortcutURLs) ?? [])
+        // Shields defaults ON: only an explicitly stored value
+        // can turn it off.
+        shieldsEnabled = defaults.object(forKey: Keys.shieldsEnabled) == nil
+            ? true : defaults.bool(forKey: Keys.shieldsEnabled)
+        shieldsDisabledSites = Set(defaults.stringArray(forKey: Keys.shieldsDisabledSites) ?? [])
         let storedSize = defaults.integer(forKey: Keys.textSize)
         textSizePercent = storedSize == 0 ? 100 : storedSize
     }

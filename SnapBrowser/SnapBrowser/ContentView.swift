@@ -217,6 +217,7 @@ private struct BrowserTabView: View {
     @State private var findCount: Int?
     @State private var findMiss = false
     @State private var showMediaPicker = false
+    @State private var showShields = false
     @State private var mediaPickerItems: [DetectedMedia] = []
     @State private var playlistNotice: String?
     @State private var toastText: String?
@@ -409,6 +410,10 @@ private struct BrowserTabView: View {
             AuthSheet(request: request) {
                 tab.authRequest = nil
             }
+        }
+        .sheet(isPresented: $showShields) {
+            ShieldsPanelView(tab: tab, manager: manager,
+                             settings: settings, shields: manager.shields)
         }
         .onChange(of: tab.tabNotice) { notice in
             if let notice {
@@ -1323,6 +1328,16 @@ private struct BrowserTabView: View {
                     Toggle(isOn: desktopBinding) {
                         Label("PC版サイト", systemImage: "desktopcomputer")
                     }
+                    // Shields (v0.4.14): per-site ad / tracker
+                    // blocking panel. Needs a current site, so it
+                    // is disabled on the start page and for archive
+                    // tabs (currentHost is nil in both cases).
+                    Button {
+                        showShields = true
+                    } label: {
+                        Label("Shields", systemImage: "shield")
+                    }
+                    .disabled(tab.currentHost == nil)
                     Button(action: onAddBookmark) {
                         Label("ブックマークに追加…", systemImage: "bookmark")
                     }

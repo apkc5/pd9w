@@ -261,6 +261,37 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         webView.pageZoom = CGFloat(settings.textSizePercent) / 100.0
     }
 
+    // MARK: - Shields (v0.4.14)
+
+    /// Host of the page currently shown, for per-site features
+    /// (the Shields panel). Nil on the start page and for archive
+    /// (file://) tabs, where per-site state has no meaning.
+    var currentHost: String? {
+        guard !showsStartPage, archiveSnapshot == nil else { return nil }
+        return webView.url?.host
+    }
+
+    /// Identifier of the Shields rule list currently attached to
+    /// this tab's content controller; nil while none is attached.
+    private(set) var appliedShieldsIdentifier: String?
+
+    /// Attaches (or, with nil, detaches) the Shields content rule
+    /// list. The previous list is removed by identifier first, so
+    /// exactly one list is attached across recompiles. Pages that
+    /// are already loaded keep their old rules until the next load
+    /// — the caller reloads the active tab when the user toggles.
+    func applyShields(list: WKContentRuleList?, identifier: String?) {
+        let controller = webView.configuration.userContentController
+        if let old = appliedShieldsIdentifier {
+            controller.removeContentRuleList(forIdentifier: old)
+            appliedShieldsIdentifier = nil
+        }
+        if let list, let identifier {
+            controller.addContentRuleList(list)
+            appliedShieldsIdentifier = identifier
+        }
+    }
+
     // MARK: - Find in page (v0.4)
 
     /// Native WKWebView find: highlights and scrolls to the match.

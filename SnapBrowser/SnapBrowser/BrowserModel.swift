@@ -19,6 +19,9 @@ final class BrowserModel: ObservableObject {
     let settings = AppSettings()
     /// File downloads handed over by tabs (v0.4.9).
     let downloads = DownloadStore()
+    /// Shields ad / tracker blocking (v0.4.14): compiles the
+    /// WKContentRuleList and distributes it to every tab.
+    let shields = ShieldsController()
 
     /// Set by ContentView so closed archive tabs can be restored
     /// and tear-offs can resolve (the store lives in the view tree).
@@ -81,6 +84,9 @@ final class BrowserModel: ObservableObject {
             tabs = [tab]
             activeTabID = tab.id
         }
+        // Shields (v0.4.14): compile the rule list and hand it to
+        // the restored tabs once compilation finishes.
+        shields.refresh(settings: settings, tabs: tabs)
     }
 
     // MARK: - Tab operations
@@ -102,6 +108,10 @@ final class BrowserModel: ObservableObject {
         }
         // blob: downloads stream through the store directly.
         tab.downloadStore = downloads
+        // Shields (v0.4.14): a tab created after the first compile
+        // picks the current rule list up here; tabs created before
+        // it are covered by the refresh() in init.
+        shields.apply(to: tab, settings: settings)
         return tab
     }
 
@@ -251,6 +261,18 @@ final class BrowserModel: ObservableObject {
     /// Applies the settings text size (page zoom) to every open tab.
     func applyTextSizeToAllTabs() {
         for tab in tabs { tab.applyTextSize() }
+    }
+
+    /// Recompiles / redistributes the Shields rule list after the
+    /// master switch or a per-site exemption changed (v0.4.14).
+    /// Already-loaded pages keep the old rules until their next
+    /// load, so the active tab is reloaded on request — a toggle
+    /// the user just made becomes visible on the page in front of
+    /// them.
+    func refreshShields(reloadActiveTab: Bool = false) {
+        shields.refresh(settings: settings, tabs: tabs) { [weak self] in
+            if reloadActiveTab { self?.activeTab.reload() }
+        }
     }
 
     /// Removes all website data (cookies, caches, storage) from the
