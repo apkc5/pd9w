@@ -5,6 +5,8 @@ import Foundation
 ///   archive.webarchive iOS web archive (Apple-only format, ≠ MHTML)
 ///   page.html          raw HTML source (portable)
 ///   full.html          self-contained HTML (CSS/images inlined, v0.2+)
+///   snapmedia-N.<ext>  bundled direct-file video/audio (v0.4.13,
+///                      referenced by relative name from full.html)
 ///   text.txt           extracted body text
 ///   meta.json          title / url / createdAt / per-file byte counts
 ///
@@ -20,6 +22,9 @@ struct SnapshotItem: Identifiable, Codable, Equatable, Hashable {
     var textChars: Int?
     var htmlBytes: Int?
     var fullHTMLBytes: Int?
+    /// Total bytes of bundled media files (v0.4.13). Optional so
+    /// meta.json files written by older versions still decode.
+    var mediaBytes: Int? = nil
 }
 
 final class SnapshotStore: ObservableObject {
@@ -44,6 +49,8 @@ final class SnapshotStore: ObservableObject {
         var textChars: Int?
         var htmlBytes: Int?
         var fullHTMLBytes: Int?
+        var mediaBytes: Int?
+        var mediaCount: Int
         var failures: [String]
     }
 
@@ -56,7 +63,8 @@ final class SnapshotStore: ObservableObject {
               archiveData: Data?,
               text: String?,
               htmlData: Data?,
-              fullHTMLData: Data? = nil) throws -> SaveOutcome {
+              fullHTMLData: Data? = nil,
+              mediaFiles: [(name: String, tempURL: URL)] = []) throws -> SaveOutcome {
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
 
         let id = UUID().uuidString
@@ -69,7 +77,8 @@ final class SnapshotStore: ObservableObject {
 
         var outcome = SaveOutcome(imageBytes: nil, archiveBytes: nil,
                                   textChars: nil, htmlBytes: nil,
-                                  fullHTMLBytes: nil, failures: [])
+                                  fullHTMLBytes: nil, mediaBytes: nil,
+                                  mediaCount: 0, failures: [])
 
         func writeVerified(_ data: Data?, _ name: String) -> Int? {
             guard let data, !data.isEmpty else { return nil }
@@ -95,6 +104,30 @@ final class SnapshotStore: ObservableObject {
             _ = writeVerified(Data(text.utf8), "text.txt")
         }
 
+        // Bundled media (v0.4.13 phase 2b): files the archive
+        // builder downloaded to temp are MOVED into the folder —
+        // never copied through memory, since they are uncapped in
+        // size. full.html references them by relative name, which
+        // resolves because archives are opened with read access
+        // to this whole folder (both open paths audited).
+        var mediaBytes = 0
+        for media in mediaFiles {
+            let dest = folder.appendingPathComponent(media.name)
+            do {
+                try fileManager.moveItem(at: media.tempURL, to: dest)
+                let size = (try? fileManager.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? nil
+                if let size, size > 0 {
+                    mediaBytes += size
+                    outcome.mediaCount += 1
+                } else {
+                    outcome.failures.append("\(media.name): 書き込み後にファイルを確認できない")
+                }
+            } catch {
+                outcome.failures.append("\(media.name): \(error.localizedDescription)")
+            }
+        }
+        outcome.mediaBytes = outcome.mediaCount > 0 ? mediaBytes : nil
+
         let item = SnapshotItem(id: id,
                                 title: title.isEmpty ? url : title,
                                 url: url,
@@ -104,7 +137,8 @@ final class SnapshotStore: ObservableObject {
                                 archiveBytes: outcome.archiveBytes,
                                 textChars: outcome.textChars,
                                 htmlBytes: outcome.htmlBytes,
-                                fullHTMLBytes: outcome.fullHTMLBytes)
+                                fullHTMLBytes: outcome.fullHTMLBytes,
+                                mediaBytes: outcome.mediaBytes)
         let meta = try JSONEncoder.snapshotEncoder.encode(item)
         try meta.write(to: folder.appendingPathComponent("meta.json"), options: .atomic)
 
