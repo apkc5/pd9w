@@ -8,9 +8,18 @@ import WebKit
 ///  2. Native code fetches each tokenised resource (with the web view's
 ///     cookies) and swaps the token for a data URI — or, for CSS, for the
 ///     fetched stylesheet text with its own url()/@import resolved.
-/// Caps: 3 MB per resource (2 MB for CSS), 25 MB total, 500 resources.
-/// Anything that fails falls back to the original URL (needs network) or,
-/// for stylesheets, to nothing — the rest of the page still renders offline.
+/// Caps: 5 MB per resource (3 MB for CSS), 40 MB total, 800 resources
+/// (raised in v0.4.13 from 3/2 MB, 25 MB, 500). Anything that fails falls
+/// back to the original URL (needs network) or, for stylesheets, to
+/// nothing — the rest of the page still renders offline.
+/// v0.4.13 capture widening: srcset candidates (the browser's pick via
+/// currentSrc, else the largest candidate), style-attribute url()s
+/// (backgrounds), video posters, and @font-face fonts (which ride the
+/// CSS url() pipeline) are tokenised too; and before freezing, the
+/// page is scrolled through once (primeLazyLoads) so lazy-loaded
+/// images have actually fired. Fetches run in bounded parallel
+/// batches (6) — including the url()/@import references INSIDE a
+/// stylesheet, which used to be fetched one by one.
 enum SelfContainedHTML {
 
     struct Result {
@@ -38,8 +47,25 @@ enum SelfContainedHTML {
     (function() {
       var resources = [];
       function abs(u) { try { return new URL(u, document.baseURI).href; } catch (e) { return null; } }
+      function bestSrcset(ss) {
+        if (!ss) { return null; }
+        var parts = ss.split(','), best = null, bestScore = -1;
+        for (var i2 = 0; i2 < parts.length; i2++) {
+          var t = parts[i2].replace(/^\\s+|\\s+$/g, '');
+          if (!t) { continue; }
+          var seg = t.split(/\\s+/);
+          var score = 1;
+          if (seg.length > 1) {
+            var d = seg[seg.length - 1];
+            if (d.slice(-1) === 'w') { score = parseFloat(d) || 1; }
+            else if (d.slice(-1) === 'x') { score = (parseFloat(d) || 1) * 100000; }
+          }
+          if (score > bestScore) { bestScore = score; best = seg[0]; }
+        }
+        return best;
+      }
       function tokenFor(url, kind) {
-        if (resources.length >= 500) { return url; }
+        if (resources.length >= 800) { return url; }
         var t = 'snapres://k' + (resources.length + 1) + '.';
         resources.push({ token: t, url: url, kind: kind });
         return t;
@@ -98,7 +124,11 @@ enum SelfContainedHTML {
       for (var m = 0; m < cloneImgs.length && m < liveImgs.length; m++) {
         var li = liveImgs[m];
         var ci = cloneImgs[m];
-        var src = li.currentSrc || li.getAttribute('data-src') || li.getAttribute('data-lazy') || li.getAttribute('data-original') || li.src || '';
+        // currentSrc is the candidate the browser actually picked
+        // (srcset/picture resolution included); if it never picked
+        // one (lazy image not yet fired), fall back to the largest
+        // srcset candidate, then the data-* lazy chain.
+        var src = li.currentSrc || bestSrcset(li.getAttribute('srcset')) || li.getAttribute('data-src') || li.getAttribute('data-lazy') || li.getAttribute('data-original') || li.src || '';
         ci.removeAttribute('srcset');
         if (src && src.indexOf('data:') !== 0) {
           var a2 = abs(src);
@@ -107,6 +137,25 @@ enum SelfContainedHTML {
       }
       var sources = root.querySelectorAll('source');
       for (var n = 0; n < sources.length; n++) { sources[n].removeAttribute('srcset'); }
+      // Inline style url()s (background-image etc.): the attribute
+      // is copied into the clone verbatim, so tokenise it in place.
+      var styled = root.querySelectorAll('[style]');
+      for (var v = 0; v < styled.length; v++) {
+        var stv = styled[v].getAttribute('style');
+        if (stv && stv.indexOf('url(') >= 0) {
+          styled[v].setAttribute('style', tokenizeCSS(stv));
+        }
+      }
+      // Video posters are still images — capture them like images.
+      // (The video itself stays a live reference, as before.)
+      var vids = root.querySelectorAll('video');
+      for (var w = 0; w < vids.length; w++) {
+        var poster = vids[w].getAttribute('poster');
+        if (poster && poster.indexOf('data:') !== 0) {
+          var pa = abs(poster);
+          if (pa) { vids[w].setAttribute('poster', tokenFor(pa, 'img')); }
+        }
+      }
       var kill = root.querySelectorAll('script, noscript, object, embed, form');
       for (var p = 0; p < kill.length; p++) { kill[p].remove(); }
       var frames = root.querySelectorAll('iframe');
@@ -140,9 +189,47 @@ enum SelfContainedHTML {
     })()
     """
 
+    // MARK: - Lazy-load priming (v0.4.13)
+
+    /// Scrolls the page through once, top to bottom, so lazy-loaded
+    /// images (IntersectionObserver / scroll handlers) actually fire
+    /// BEFORE the freeze reads currentSrc — an unfired lazy image
+    /// would otherwise archive as its placeholder. Time-capped
+    /// (~5 s of scrolling, at most 50 steps), then the original
+    /// scroll position is restored and given a short settle window
+    /// for the fired loads to land. Best-effort: any failure is
+    /// ignored by the caller and the freeze proceeds regardless.
+    private static let preScrollJS = """
+    (async function() {
+      var startX = window.scrollX || 0;
+      var startY = window.scrollY || 0;
+      var budget = 5000, stepDelay = 110, t0 = Date.now();
+      var vh = window.innerHeight || 800;
+      var total = Math.max(
+        document.body ? document.body.scrollHeight : 0,
+        document.documentElement ? document.documentElement.scrollHeight : 0);
+      var steps = Math.min(50, Math.ceil(total / (vh * 0.9)));
+      for (var i = 1; i <= steps; i++) {
+        window.scrollTo(startX, i * vh * 0.9);
+        await new Promise(function(r) { setTimeout(r, stepDelay); });
+        if (Date.now() - t0 > budget) { break; }
+      }
+      window.scrollTo(startX, startY);
+      await new Promise(function(r) { setTimeout(r, 350); });
+      return steps;
+    })()
+    """
+
+    static func primeLazyLoads(in webView: WKWebView) async {
+        _ = try? await webView.evaluateJavaScript(preScrollJS)
+    }
+
     // MARK: - Build
 
     static func build(from webView: WKWebView) async throws -> Result {
+        // NOTE: the caller (BrowserTab.snap) primes lazy loads once
+        // before ALL captures, so the full-page image and the
+        // webarchive benefit too — build() does not scroll again.
         let raw = try await webView.evaluateJavaScript(freezeJS)
         guard let json = raw as? String else { throw BuildError.freezeFailed }
         let resources = parseResources(json)
@@ -207,17 +294,21 @@ enum SelfContainedHTML {
 
 // MARK: - Resource fetching
 
-/// Fetches tokenised resources in small parallel batches under a shared
-/// byte budget. CSS resources are returned as processed stylesheet text;
-/// everything else as a data URI.
+/// Fetches tokenised resources in bounded parallel batches (6 at a
+/// time, v0.4.13) under a shared byte budget. CSS resources are
+/// returned as processed stylesheet text; everything else as a
+/// data URI. The references inside a stylesheet (@import sheets,
+/// url() images/fonts) are fetched in bounded parallel too — they
+/// used to be awaited one by one and dominated the build time on
+/// CSS-heavy pages.
 private final class ResourceFetcher {
     private let cookies: [HTTPCookie]
     private let session: URLSession
     private var usedBytes = 0
 
-    private static let totalLimit = 25_000_000
-    private static let perItemLimit = 3_000_000
-    private static let perCSSLimit = 2_000_000
+    private static let totalLimit = 40_000_000
+    private static let perItemLimit = 5_000_000
+    private static let perCSSLimit = 3_000_000
 
     init(cookies: [HTTPCookie]) {
         self.cookies = cookies
@@ -230,7 +321,7 @@ private final class ResourceFetcher {
     func fetchAll(_ resources: [SelfContainedHTML.Resource]) async -> [String: String] {
         var replacements: [String: String] = [:]
         var index = 0
-        let batchSize = 8
+        let batchSize = 6
         while index < resources.count {
             if usedBytes >= Self.totalLimit { break }
             let batch = Array(resources[index..<min(index + batchSize, resources.count)])
@@ -297,6 +388,40 @@ private final class ResourceFetcher {
         }
     }
 
+    /// Bounded-parallel map: runs `work` over the items in chunks
+    /// of at most 6 concurrent tasks and collects the non-nil
+    /// results by key. Used for the references inside a stylesheet
+    /// (v0.4.13), which used to be awaited strictly one by one.
+    private func fetchInParallel<Key: Hashable, Value>(
+        _ items: [(Key, URL)],
+        work: @escaping (URL) async -> Value?
+    ) async -> [Key: Value] {
+        var results: [Key: Value] = [:]
+        var index = 0
+        let chunkSize = 6
+        while index < items.count {
+            let chunk = Array(items[index..<min(index + chunkSize, items.count)])
+            index += chunk.count
+            let chunkResults: [(Key, Value)] = await withTaskGroup(
+                of: (Key, Value)?.self
+            ) { group in
+                for (key, itemURL) in chunk {
+                    group.addTask {
+                        guard let value = await work(itemURL) else { return nil }
+                        return (key, value)
+                    }
+                }
+                var collected: [(Key, Value)] = []
+                for await result in group {
+                    if let result { collected.append(result) }
+                }
+                return collected
+            }
+            for (key, value) in chunkResults { results[key] = value }
+        }
+        return results
+    }
+
     /// Downloads a stylesheet and resolves its url() / @import references.
     /// Returns the processed CSS plus its approximate byte cost.
     private func fetchCSS(url: URL, depth: Int) async -> (text: String, bytes: Int)? {
@@ -306,13 +431,25 @@ private final class ResourceFetcher {
         else { return nil }
         var bytes = data.count
 
-        // @import first (recursive, depth-capped), then url() in the merged text.
+        // @import first (recursive, depth-capped), then url() in
+        // the merged text. The nested sheets are fetched in
+        // bounded parallel, then inlined in match order.
+        let imports = Self.matches(of: Self.importPattern, in: css)
         if depth < 2 {
-            let imports = Self.matches(of: Self.importPattern, in: css)
+            var targets: [(String, URL)] = []
+            var seenTargets = Set<String>()
             for match in imports {
-                guard let ref = match.group, let target = URL(string: ref, relativeTo: url)?.absoluteURL
+                guard let ref = match.group,
+                      let target = URL(string: ref, relativeTo: url)?.absoluteURL,
+                      seenTargets.insert(match.full).inserted
                 else { continue }
-                if let nested = await fetchCSS(url: target, depth: depth + 1) {
+                targets.append((match.full, target))
+            }
+            let fetched = await fetchInParallel(targets) { target in
+                await self.fetchCSS(url: target, depth: depth + 1)
+            }
+            for match in imports {
+                if let nested = fetched[match.full] {
                     css = css.replacingOccurrences(of: match.full, with: nested.text)
                     bytes += nested.bytes
                 } else {
@@ -320,23 +457,32 @@ private final class ResourceFetcher {
                 }
             }
         } else {
-            for match in Self.matches(of: Self.importPattern, in: css) {
+            for match in imports {
                 css = css.replacingOccurrences(of: match.full, with: "")
             }
         }
 
+        // url() references (background images, @font-face fonts):
+        // unique refs fetched in bounded parallel, then swapped
+        // for data URIs.
         let urlRefs = Self.matches(of: Self.cssURLPattern, in: css)
-        var seen = Set<String>()
+        var targets: [(String, URL)] = []
+        var seenRefs = Set<String>()
         for match in urlRefs {
-            guard let ref = match.group, !ref.hasPrefix("data:"), !seen.contains(ref)
+            guard let ref = match.group, !ref.hasPrefix("data:"),
+                  seenRefs.insert(ref).inserted,
+                  let target = URL(string: ref, relativeTo: url)?.absoluteURL
             else { continue }
-            seen.insert(ref)
-            guard let target = URL(string: ref, relativeTo: url)?.absoluteURL,
-                  let (data, mime) = await fetchData(url: target, limit: Self.perItemLimit)
-            else { continue }
-            let uri = "data:\(mime);base64,\(data.base64EncodedString())"
+            targets.append((ref, target))
+        }
+        let fetchedData = await fetchInParallel(targets) { target in
+            await self.fetchData(url: target, limit: Self.perItemLimit)
+        }
+        for match in urlRefs {
+            guard let ref = match.group, let got = fetchedData[ref] else { continue }
+            let uri = "data:\(got.1);base64,\(got.0.base64EncodedString())"
             css = css.replacingOccurrences(of: match.full, with: "url(\(uri))")
-            bytes += data.count
+            bytes += got.0.count
         }
         return (css, bytes)
     }
@@ -375,6 +521,7 @@ private final class ResourceFetcher {
         case "woff": return "font/woff"
         case "woff2": return "font/woff2"
         case "ttf": return "font/ttf"
+        case "otf": return "font/otf"
         case "css": return "text/css"
         default: return "application/octet-stream"
         }
