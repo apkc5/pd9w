@@ -1473,6 +1473,10 @@ enum TabTearOff {
     /// archive folder, else its URL, else nothing (a start-page tab
     /// reopens as a start page). The privacy flag always rides
     /// along so the receiver can rebuild the tab in the same class.
+    /// @MainActor because BrowserTab's state is main-actor isolated
+    /// (the old in-View tearOff got that isolation from View itself;
+    /// this enum does not).
+    @MainActor
     static func activity(for tab: BrowserTab) -> NSUserActivity {
         let activity = NSUserActivity(activityType: activityType)
         activity.title = "タブを新しいウィンドウで開く"
@@ -1488,16 +1492,23 @@ enum TabTearOff {
 
     /// Tear-off proper: ask UIKit for a NEW scene carrying this tab.
     /// The error handler is the only failure signal the API gives,
-    /// so the original tab is closed (move, not copy) by a work item
-    /// that the error handler cancels if activation fails.
+    /// so the original tab is closed (move, not copy) by a delayed
+    /// task that stands down if the handler reported an error first.
+    /// (Up to v0.4.11 this was a DispatchWorkItem scheduled from the
+    /// View; as a nonisolated static here it must schedule through a
+    /// @MainActor Task instead — see the v0.4.12 diag round.)
+    @MainActor
     static func moveToNewWindow(_ tab: BrowserTab, manager: BrowserModel) {
-        let closeWork = DispatchWorkItem { manager.closeTab(tab) }
+        var activationFailed = false
         UIApplication.shared.requestSceneSessionActivation(
             nil, userActivity: activity(for: tab), options: nil
         ) { error in
-            if error != nil { closeWork.cancel() }
+            if error != nil { activationFailed = true }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: closeWork)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if !activationFailed { manager.closeTab(tab) }
+        }
     }
 
     /// A new window showing a fresh start page, in the requested
@@ -1521,12 +1532,13 @@ enum TabTearOff {
     /// same class. Splitting never crosses the privacy line: the
     /// `isPrivate` tray only ever spawns private tabs. Activations
     /// are staggered so UIKit takes them one at a time; each moved
-    /// tab still closes through moveToNewWindow's error-cancelled
-    /// work item. NOTE: no public API lets an app propose a window
+    /// tab still closes through moveToNewWindow's error-aware
+    /// delayed close. NOTE: no public API lets an app propose a window
     /// frame on iPadOS (UIWindowScene.GeometryPreferences has no
     /// iPad variant with a frame, and activation options carry no
     /// geometry), so the windows open wherever the system puts
     /// them — the final snap into a tile stays an OS gesture.
+    @MainActor
     static func splitWindows(count: Int, isPrivate: Bool, manager: BrowserModel) {
         let tray = manager.tabs.filter { $0.isPrivate == isPrivate }
         guard count >= 2, !tray.isEmpty else { return }
@@ -1537,14 +1549,16 @@ enum TabTearOff {
         else { return }
         let followers = Array(tray.dropFirst(keepIndex + 1))
         for slot in 0..<(count - 1) {
-            let delay = 0.25 * Double(slot)
+            let delay = UInt64(slot) * 250_000_000
             if slot < followers.count {
                 let tab = followers[slot]
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                Task { @MainActor in
+                    if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
                     moveToNewWindow(tab, manager: manager)
                 }
             } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                Task { @MainActor in
+                    if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
                     spawnStartPageWindow(isPrivate: isPrivate)
                 }
             }
