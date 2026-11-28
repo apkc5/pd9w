@@ -43,6 +43,20 @@ struct SettingsView: View {
                     Text("検索候補を有効にすると、アドレスバーに入力中の文字が選択中の検索エンジンに送信され、候補が表示されます。「お使いのデバイス」の候補で×を押した項目は、履歴・ブックマークからは消えず、候補に出なくなるだけです。上のリセットで元に戻せます。")
                 }
 
+                Section {
+                    Toggle("広告・トラッカーをブロック", isOn: $settings.shieldsEnabled)
+                    if !settings.shieldsDisabledSites.isEmpty {
+                        Button("サイト別の無効設定をリセット（\(settings.shieldsDisabledSites.count)件）") {
+                            settings.resetShieldsDisabledSites()
+                            manager.refreshShields()
+                        }
+                    }
+                } header: {
+                    Text("Shields")
+                } footer: {
+                    Text("広告・トラッキングのドメイン（\(ShieldBlocklist.domains.count)件）へのサードパーティ読み込みと、そのドメインのCookieをブロックします。サイトごとの切り替えは各タブの ⋯ メニュー → Shields から。")
+                }
+
                 Section("表示") {
                     Toggle("PC版サイトを既定にする", isOn: $settings.desktopByDefault)
                     Picker("テキストサイズ", selection: $settings.textSizePercent) {
@@ -88,6 +102,9 @@ struct SettingsView: View {
             }
             .onChange(of: settings.textSizePercent) { _ in
                 manager.applyTextSizeToAllTabs()
+            }
+            .onChange(of: settings.shieldsEnabled) { _ in
+                manager.refreshShields(reloadActiveTab: true)
             }
             .confirmationDialog("削除しますか？",
                                 isPresented: confirmBinding,
