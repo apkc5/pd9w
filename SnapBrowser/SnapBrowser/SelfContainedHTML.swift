@@ -394,13 +394,21 @@ enum SelfContainedHTML {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return ([], []) }
-        let resources = (object["resources"] as? [[String: Any]] ?? []).compactMap { entry in
+        // Explicitly typed at every step: the earlier form —
+        // compactMap directly on the (cast ?? []) expression, in a
+        // tuple-returning function with no contextual type — left
+        // the compiler unable to infer compactMap's result element
+        // type (run 42/43 diag: "generic parameter 'ElementOfResult'
+        // could not be inferred" on both calls).
+        let resourceEntries: [[String: Any]] = object["resources"] as? [[String: Any]] ?? []
+        let resources: [Resource] = resourceEntries.compactMap { entry in
             guard let token = entry["token"] as? String,
                   let url = entry["url"] as? String,
                   let kind = entry["kind"] as? String else { return nil }
             return Resource(token: token, url: url, kind: kind)
         }
-        let media = (object["media"] as? [[String: Any]] ?? []).compactMap { entry in
+        let mediaEntries: [[String: Any]] = object["media"] as? [[String: Any]] ?? []
+        let media: [MediaRef] = mediaEntries.compactMap { entry in
             guard let file = entry["file"] as? String,
                   let url = entry["url"] as? String,
                   let kind = entry["kind"] as? String else { return nil }
