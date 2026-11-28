@@ -10,12 +10,16 @@ import UniformTypeIdentifiers
 /// mixed grid with eye-off badges. The ⋯ menu carries 履歴,
 /// 閉じたタブを開く, タブを選択 (multi-select mode),
 /// 2分割で開く / 3分割で開く (one-tap split view into separate
-/// windows, v0.4.12 — TabTearOff.splitWindows, current tray only)
+/// windows, v0.4.12 — TabWindows.splitWindows, current tray only)
 /// and すべてのタブを閉じる for the current tray. In multi-select
 /// mode cards grow check badges, taps toggle selection instead of
 /// switching, drag-reorder is off, and the bottom bar becomes the
-/// selection actions. The grid/list view toggle from Brave's
-/// header was deliberately NOT ported (see BUILD_LOG 第20次）.
+/// selection actions. While a card is being dragged, a drop zone
+/// appears at the top of the grid (v0.4.13): dropping the card
+/// there moves its tab into a NEW window — the grid's counterpart
+/// of the strip's drag-out tear-off, through the same TabWindows
+/// move. The grid/list view toggle from Brave's header was
+/// deliberately NOT ported (see BUILD_LOG 第20次）.
 ///
 /// Column count (kept from v0.4.5): decided explicitly from the
 /// container width — never `GridItem(.adaptive)`, which collapsed
@@ -46,6 +50,9 @@ import UniformTypeIdentifiers
 struct TabOverviewView: View {
     @ObservedObject var manager: BrowserModel
     @Environment(\.dismiss) private var dismiss
+    /// SwiftUI's window opener (v0.4.13): split view and the card
+    /// drop zone open their windows through TabWindows with this.
+    @Environment(\.openWindow) private var openWindow
 
     /// Which tray the grid shows. The overview opens on the tray
     /// the ACTIVE tab belongs to.
@@ -148,6 +155,17 @@ struct TabOverviewView: View {
                     .onDrop(of: [.text],
                             delegate: TabGridCatchAllDropDelegate(draggingID: $draggingTabID))
                 }
+                // Tear-off drop zone (v0.4.13): visible only while
+                // a card drag is in flight. It is an OVERLAY, so
+                // its appearance never shifts the grid under the
+                // user's finger.
+                .overlay(alignment: .top) {
+                    if draggingTabID != nil && !selecting {
+                        tearOffDropZone
+                            .padding(.top, 8)
+                            .transition(.opacity)
+                    }
+                }
                 if selecting {
                     selectionBar
                 } else {
@@ -219,18 +237,20 @@ struct TabOverviewView: View {
                 // tray out into separate windows, then leave the
                 // overview so the windows are what the user sees.
                 Button {
-                    TabTearOff.splitWindows(count: 2,
+                    TabWindows.splitWindows(count: 2,
                                             isPrivate: segment == .private,
-                                            manager: manager)
+                                            manager: manager,
+                                            openWindow: openWindow)
                     dismiss()
                 } label: {
                     Label("2分割で開く", systemImage: "rectangle.split.2x1")
                 }
                 .disabled(segmentTabs.isEmpty)
                 Button {
-                    TabTearOff.splitWindows(count: 3,
+                    TabWindows.splitWindows(count: 3,
                                             isPrivate: segment == .private,
-                                            manager: manager)
+                                            manager: manager,
+                                            openWindow: openWindow)
                     dismiss()
                 } label: {
                     Label("3分割で開く", systemImage: "rectangle.split.3x1")
@@ -342,6 +362,35 @@ struct TabOverviewView: View {
                                                          manager: manager,
                                                          draggingID: $draggingTabID))
         }
+    }
+
+    /// Drop zone shown while a card is being dragged (v0.4.13):
+    /// dropping a card here moves its tab into a NEW window — the
+    /// same TabWindows move as the strip's tear-off. System drag
+    /// & drop gives no callback for "dropped outside everything",
+    /// so an explicit zone is the reliable way to offer drag-out
+    /// from the grid (the reorder targets stay the cards
+    /// themselves). Tapping the zone — only possible when no drag
+    /// is actually running, e.g. a cancelled drag left
+    /// draggingTabID set — clears the stale drag state.
+    private var tearOffDropZone: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "plus.rectangle.on.rectangle")
+                .font(.subheadline.bold())
+            Text("離すと新しいウィンドウで開く")
+                .font(.subheadline.bold())
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(Capsule().fill(Theme.cobalt))
+        .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+        .contentShape(Capsule())
+        .onTapGesture { draggingTabID = nil }
+        .onDrop(of: [.text],
+                delegate: TabTearOffDropDelegate(manager: manager,
+                                                 draggingID: $draggingTabID,
+                                                 openWindow: openWindow))
     }
 
     private func handleCardTap(_ tab: BrowserTab) {
@@ -656,6 +705,34 @@ private struct TabGridCatchAllDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         draggingID = nil
+        return true
+    }
+}
+
+/// Drop target for the overview's tear-off drop zone (v0.4.13):
+/// dropping a dragged card here moves its tab into a new window,
+/// through the same verified TabWindows move as the strip's
+/// tear-off (the source tab closes only once the new scene
+/// exists; a failure surfaces as a toast). The tab is resolved
+/// from the dragged id inside a MainActor task at execution
+/// time — the TabReorderDropDelegate pattern — never captured
+/// at event time.
+private struct TabTearOffDropDelegate: DropDelegate {
+    let manager: BrowserModel
+    @Binding var draggingID: UUID?
+    let openWindow: OpenWindowAction
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let id = draggingID else { return false }
+        draggingID = nil
+        Task { @MainActor in
+            guard let tab = manager.tabs.first(where: { $0.id == id }) else { return }
+            TabWindows.moveToNewWindow(tab, manager: manager, openWindow: openWindow)
+        }
         return true
     }
 }
