@@ -48,7 +48,8 @@ struct TabOverviewView: View {
     /// Which tray the grid shows. The overview opens on the tray
     /// the ACTIVE tab belongs to.
     private enum Segment {
-        case normal, private
+        case normal
+        case `private`
     }
     @State private var segment: Segment
     /// Tab search: filters the current tray by title / URL,
