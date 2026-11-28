@@ -8,8 +8,10 @@ import UniformTypeIdentifiers
 /// switch in the middle, and a round ✓ to close. Normal and
 /// private tabs live in SEPARATE trays (v0.4.11) instead of one
 /// mixed grid with eye-off badges. The ⋯ menu carries 履歴,
-/// 閉じたタブを開く, タブを選択 (multi-select mode) and
-/// すべてのタブを閉じる for the current tray. In multi-select
+/// 閉じたタブを開く, タブを選択 (multi-select mode),
+/// 2分割で開く / 3分割で開く (one-tap split view into separate
+/// windows, v0.4.12 — TabTearOff.splitWindows, current tray only)
+/// and すべてのタブを閉じる for the current tray. In multi-select
 /// mode cards grow check badges, taps toggle selection instead of
 /// switching, drag-reorder is off, and the bottom bar becomes the
 /// selection actions. The grid/list view toggle from Brave's
@@ -213,6 +215,27 @@ struct TabOverviewView: View {
                     Label("タブを選択", systemImage: "checkmark.circle")
                 }
                 .disabled(selecting)
+                // One-tap split view (v0.4.12): fan the CURRENT
+                // tray out into separate windows, then leave the
+                // overview so the windows are what the user sees.
+                Button {
+                    TabTearOff.splitWindows(count: 2,
+                                            isPrivate: segment == .private,
+                                            manager: manager)
+                    dismiss()
+                } label: {
+                    Label("2分割で開く", systemImage: "rectangle.split.2x1")
+                }
+                .disabled(segmentTabs.isEmpty)
+                Button {
+                    TabTearOff.splitWindows(count: 3,
+                                            isPrivate: segment == .private,
+                                            manager: manager)
+                    dismiss()
+                } label: {
+                    Label("3分割で開く", systemImage: "rectangle.split.3x1")
+                }
+                .disabled(segmentTabs.isEmpty)
                 Divider()
                 Button(role: .destructive) {
                     showCloseAllConfirm = true

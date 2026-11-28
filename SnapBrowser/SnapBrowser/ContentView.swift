@@ -116,15 +116,38 @@ struct ContentView: View {
     /// Receiving end of the tab-strip tear-off: a scene created for a
     /// dragged-out tab lands here with the tab's URL (or archive
     /// folder) in the activity and opens it as a tab in this scene.
+    /// Since v0.4.12 the payload also carries the source tab's
+    /// privacy: a private tab torn off (or fanned out by split view)
+    /// reopens as a PRIVATE tab here — before, the flag was dropped
+    /// and the URL landed in a normal, history-recorded tab. A
+    /// payload with neither URL nor folder is a start-page tab (a
+    /// moved blank tab, or a split-view filler slot): open a fresh
+    /// tab of the requested kind so the window count still matches.
     private func handleTornOffTab(_ activity: NSUserActivity) {
-        if let folder = activity.userInfo?[TabTearOff.archiveFolderKey] as? String {
+        let info = activity.userInfo ?? [:]
+        let isPrivate = (info[TabTearOff.privateKey] as? Bool) ?? false
+        if let folder = info[TabTearOff.archiveFolderKey] as? String {
             store.reload()
             if let item = store.items.first(where: { $0.folderName == folder }) {
-                manager.openArchive(item: item, store: store)
+                manager.openArchive(item: item, store: store, isPrivate: isPrivate)
+                return
             }
-        } else if let urlString = activity.userInfo?[TabTearOff.urlKey] as? String,
+            // The snapshot vanished between send and receive; fall
+            // through to a fresh tab rather than an empty window.
+            openFreshTab(isPrivate: isPrivate)
+        } else if let urlString = info[TabTearOff.urlKey] as? String,
                   let url = URL(string: urlString) {
-            _ = manager.newTab(url: url)
+            _ = manager.newTab(url: url, isPrivate: isPrivate)
+        } else {
+            openFreshTab(isPrivate: isPrivate)
+        }
+    }
+
+    private func openFreshTab(isPrivate: Bool) {
+        if isPrivate {
+            _ = manager.newPrivateTab()
+        } else {
+            _ = manager.newTab()
         }
     }
 
@@ -1060,27 +1083,11 @@ private struct BrowserTabView: View {
         stripDragTargetIndex = stripDragStartIndex
     }
 
-    /// Tear-off: ask UIKit for a NEW scene carrying this tab. The
-    /// error handler is the only failure signal the API gives, so the
-    /// original tab is closed (move, not copy) by a work item that the
-    /// error handler cancels if activation fails.
+    /// Tear-off: ask UIKit for a NEW scene carrying this tab (move,
+    /// not copy). The shared implementation lives in TabTearOff so
+    /// split view (v0.4.12) moves tabs exactly the same way.
     private func tearOff(_ tab: BrowserTab) {
-        let activity = NSUserActivity(activityType: TabTearOff.activityType)
-        activity.title = "タブを新しいウィンドウで開く"
-        if let item = tab.archiveSnapshot {
-            activity.userInfo = [TabTearOff.archiveFolderKey: item.folderName]
-        } else if let urlString = tab.currentURLString {
-            activity.userInfo = [TabTearOff.urlKey: urlString]
-        } else {
-            return // start-page tab: nothing to carry over
-        }
-        let closeWork = DispatchWorkItem { manager.closeTab(tab) }
-        UIApplication.shared.requestSceneSessionActivation(
-            nil, userActivity: activity, options: nil
-        ) { error in
-            if error != nil { closeWork.cancel() }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: closeWork)
+        TabTearOff.moveToNewWindow(tab, manager: manager)
     }
 
     // MARK: Find bar (slim strip above the toolbar while searching)
@@ -1251,6 +1258,24 @@ private struct BrowserTabView: View {
                         Label("閉じたタブを開く", systemImage: "arrow.uturn.backward")
                     }
                     .disabled(manager.closedTabs.isEmpty)
+                    // One-tap split view (v0.4.12): fan this tab's
+                    // tray out into separate windows — see
+                    // TabTearOff.splitWindows. The submenu's two
+                    // rows are the 2/3 choice.
+                    Menu {
+                        Button {
+                            TabTearOff.splitWindows(count: 2, isPrivate: tab.isPrivate, manager: manager)
+                        } label: {
+                            Label("2分割", systemImage: "rectangle.split.2x1")
+                        }
+                        Button {
+                            TabTearOff.splitWindows(count: 3, isPrivate: tab.isPrivate, manager: manager)
+                        } label: {
+                            Label("3分割", systemImage: "rectangle.split.3x1")
+                        }
+                    } label: {
+                        Label("タブを分割表示", systemImage: "rectangle.split.2x1")
+                    }
                 }
                 Section {
                     Button(action: onShare) {
@@ -1432,12 +1457,99 @@ private struct BrowserTabView: View {
 
 // MARK: - Tab tear-off (drag a strip tab out → new window)
 
-/// Shared keys for the tear-off NSUserActivity. The receiving scene
-/// (ContentView.onContinueUserActivity) opens a tab from these.
+/// Shared keys and machinery for the tear-off NSUserActivity. The
+/// receiving scene (ContentView.onContinueUserActivity) opens a tab
+/// from these. v0.4.12 adds the `private` flag — up to v0.4.11 the
+/// payload had no notion of privacy, so a private tab torn off into
+/// a new window came back as a NORMAL tab with its URL recorded —
+/// and builds split view on top of the same move machinery.
 enum TabTearOff {
     static let activityType = "jp.anko.snapbrowser.openTab"
     static let urlKey = "url"
     static let archiveFolderKey = "archiveFolder"
+    static let privateKey = "private"
+
+    /// The activity that carries one tab into a new scene: its
+    /// archive folder, else its URL, else nothing (a start-page tab
+    /// reopens as a start page). The privacy flag always rides
+    /// along so the receiver can rebuild the tab in the same class.
+    static func activity(for tab: BrowserTab) -> NSUserActivity {
+        let activity = NSUserActivity(activityType: activityType)
+        activity.title = "タブを新しいウィンドウで開く"
+        var info: [String: Any] = [privateKey: tab.isPrivate]
+        if let item = tab.archiveSnapshot {
+            info[archiveFolderKey] = item.folderName
+        } else if let urlString = tab.currentURLString {
+            info[urlKey] = urlString
+        }
+        activity.userInfo = info
+        return activity
+    }
+
+    /// Tear-off proper: ask UIKit for a NEW scene carrying this tab.
+    /// The error handler is the only failure signal the API gives,
+    /// so the original tab is closed (move, not copy) by a work item
+    /// that the error handler cancels if activation fails.
+    static func moveToNewWindow(_ tab: BrowserTab, manager: BrowserModel) {
+        let closeWork = DispatchWorkItem { manager.closeTab(tab) }
+        UIApplication.shared.requestSceneSessionActivation(
+            nil, userActivity: activity(for: tab), options: nil
+        ) { error in
+            if error != nil { closeWork.cancel() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: closeWork)
+    }
+
+    /// A new window showing a fresh start page, in the requested
+    /// privacy class. Used for split view's filler slots when the
+    /// tray runs out of tabs to fan out. Nothing is closed here.
+    static func spawnStartPageWindow(isPrivate: Bool) {
+        let activity = NSUserActivity(activityType: activityType)
+        activity.title = "タブを新しいウィンドウで開く"
+        activity.userInfo = [privateKey: isPrivate]
+        UIApplication.shared.requestSceneSessionActivation(
+            nil, userActivity: activity, options: nil
+        ) { _ in }
+    }
+
+    /// One-tap split view (v0.4.12): fan one tray's tabs out into
+    /// separate windows so the user can tile them 2- or 3-across.
+    /// This window keeps the tray's active tab (or its first tab,
+    /// when the active tab belongs to the other tray); the tabs
+    /// AFTER it, in tray order, move — one per new window — and any
+    /// slots still unfilled get fresh start-page windows of the
+    /// same class. Splitting never crosses the privacy line: the
+    /// `isPrivate` tray only ever spawns private tabs. Activations
+    /// are staggered so UIKit takes them one at a time; each moved
+    /// tab still closes through moveToNewWindow's error-cancelled
+    /// work item. NOTE: no public API lets an app propose a window
+    /// frame on iPadOS (UIWindowScene.GeometryPreferences has no
+    /// iPad variant with a frame, and activation options carry no
+    /// geometry), so the windows open wherever the system puts
+    /// them — the final snap into a tile stays an OS gesture.
+    static func splitWindows(count: Int, isPrivate: Bool, manager: BrowserModel) {
+        let tray = manager.tabs.filter { $0.isPrivate == isPrivate }
+        guard count >= 2, !tray.isEmpty else { return }
+        let keep = manager.activeTab.isPrivate == isPrivate
+            ? manager.activeTab
+            : tray[0]
+        guard let keepIndex = tray.firstIndex(where: { $0.id == keep.id })
+        else { return }
+        let followers = Array(tray.dropFirst(keepIndex + 1))
+        for slot in 0..<(count - 1) {
+            let delay = 0.25 * Double(slot)
+            if slot < followers.count {
+                let tab = followers[slot]
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    moveToNewWindow(tab, manager: manager)
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    spawnStartPageWindow(isPrivate: isPrivate)
+                }
+            }
+        }
+    }
 }
 
 /// One chip in the tab strip: letter tile / aperture + title + ×.
