@@ -236,11 +236,40 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         if let url = URL(string: text), url.scheme == "http" || url.scheme == "https" {
             return url
         }
+        // Bare IPv4 / localhost input (v0.4.14): LAN and
+        // Tailscale dashboards are plain HTTP, so defaulting
+        // them to https:// (or to a search) could never work —
+        // "100.76.172.45:8090" must mean http://100.76.172.45:8090.
+        // An explicit http:// URL already returned above,
+        // untouched.
+        if Self.looksLikeLocalHostAddress(text),
+           let url = URL(string: "http://" + text) {
+            return url
+        }
         let looksLikeDomain = text.contains(".") && !text.contains(" ")
         if looksLikeDomain, let url = URL(string: "https://" + text) {
             return url
         }
         return settings.searchEngine.searchURL(for: text)
+    }
+
+    /// True for scheme-less input whose host part is an IPv4
+    /// literal ("10.20.1.7", "100.76.172.45:8090/path") or
+    /// "localhost" with a port/path. Plain words and regular
+    /// domains are unaffected.
+    static func looksLikeLocalHostAddress(_ text: String) -> Bool {
+        guard !text.contains(" ") else { return false }
+        let host = text.prefix { $0 != "/" && $0 != ":" && $0 != "?" }
+        if host == "localhost" {
+            return text.count > host.count
+        }
+        let octets = host.split(separator: ".")
+        guard octets.count == 4 else { return false }
+        return octets.allSatisfy { part in
+            !part.isEmpty && part.count <= 3
+                && part.allSatisfy(\.isNumber)
+                && (Int(part) ?? 999) <= 255
+        }
     }
 
     // MARK: - Desktop site / text size (v0.4)
@@ -274,7 +303,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// Identifier of the Shields rule list currently attached to
     /// this tab's content controller; nil while none is attached.
     /// The list object is kept alongside: this SDK removes rule
-    /// lists by object (`removeContentRuleList(_:)`), not by
+    /// lists by object (`remove(_:)`), not by
     /// identifier.
     private(set) var appliedShieldsIdentifier: String?
     private var appliedShieldsList: WKContentRuleList?
@@ -287,7 +316,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     func applyShields(list: WKContentRuleList?, identifier: String?) {
         let controller = webView.configuration.userContentController
         if let old = appliedShieldsList {
-            controller.removeContentRuleList(old)
+            controller.remove(old)
             appliedShieldsList = nil
             appliedShieldsIdentifier = nil
         }
