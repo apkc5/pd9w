@@ -273,21 +273,27 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
 
     /// Identifier of the Shields rule list currently attached to
     /// this tab's content controller; nil while none is attached.
+    /// The list object is kept alongside: this SDK removes rule
+    /// lists by object (`removeContentRuleList(_:)`), not by
+    /// identifier.
     private(set) var appliedShieldsIdentifier: String?
+    private var appliedShieldsList: WKContentRuleList?
 
     /// Attaches (or, with nil, detaches) the Shields content rule
-    /// list. The previous list is removed by identifier first, so
-    /// exactly one list is attached across recompiles. Pages that
-    /// are already loaded keep their old rules until the next load
-    /// — the caller reloads the active tab when the user toggles.
+    /// list. The previous list is removed first, so exactly one
+    /// list is attached across recompiles. Pages that are already
+    /// loaded keep their old rules until the next load — the
+    /// caller reloads the active tab when the user toggles.
     func applyShields(list: WKContentRuleList?, identifier: String?) {
         let controller = webView.configuration.userContentController
-        if let old = appliedShieldsIdentifier {
-            controller.removeContentRuleList(forIdentifier: old)
+        if let old = appliedShieldsList {
+            controller.removeContentRuleList(old)
+            appliedShieldsList = nil
             appliedShieldsIdentifier = nil
         }
         if let list, let identifier {
-            controller.addContentRuleList(list)
+            controller.add(list)
+            appliedShieldsList = list
             appliedShieldsIdentifier = identifier
         }
     }
