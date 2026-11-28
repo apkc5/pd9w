@@ -148,7 +148,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 110000000000000000000002 /* Build configuration list for PBXNativeTarget "SnapBrowser" */;
 			buildPhases = (
-				0F0000000000000000000004 /* DiagTypecheck */,
 				0F0000000000000000000001 /* Sources */,
 				0F0000000000000000000002 /* Frameworks */,
 				0F0000000000000000000003 /* Resources */,
@@ -208,28 +207,6 @@
 /* End PBXResourcesBuildPhase section */
 
 
-
-/* Begin PBXShellScriptBuildPhase section */
-		0F0000000000000000000004 /* DiagTypecheck */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = DiagTypecheck;
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set +e\nERR=/tmp/diag_errors.txt\n{\necho \"DiagTypecheck run ${GITHUB_RUN_NUMBER:-?} target ios17.0\"\nxcrun swiftc --version\nSDKPATH=\"$(xcrun --sdk iphoneos --show-sdk-path)\"\necho \"SDK: $SDKPATH\"\nls \"$SRCROOT/SnapBrowser\"\nxcrun swiftc -typecheck -sdk \"$SDKPATH\" -target arm64-apple-ios17.0 -module-name SnapBrowser \"$SRCROOT\"/SnapBrowser/*.swift\necho \"typecheck exit: $?\"\n} > \"$ERR\" 2>&1\nREPO=\"$(cd \"$SRCROOT/..\" && pwd)\"\ncd \"$REPO\" || exit 0\ngit fetch origin diag >/dev/null 2>&1\nWT=\"$(mktemp -d)/diagwt\"\nif git show-ref --verify --quiet refs/remotes/origin/diag; then\n  git worktree add \"$WT\" -B diag origin/diag >/dev/null 2>&1\nelse\n  git worktree add \"$WT\" -B diag >/dev/null 2>&1\nfi\nif [ -d \"$WT\" ]; then\n  cp \"$ERR\" \"$WT/errors.txt\"\n  cd \"$WT\" || exit 0\n  git add errors.txt >/dev/null 2>&1\n  git -c user.email=diag@local -c user.name=diag commit -m \"diag typecheck\" >/dev/null 2>&1\n  git push origin diag >/dev/null 2>&1\n  cd \"$REPO\" || exit 0\n  git worktree remove --force \"$WT\" >/dev/null 2>&1\nfi\nexit 0\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0F0000000000000000000001 /* Sources */ = {
