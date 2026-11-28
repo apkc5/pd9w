@@ -349,8 +349,12 @@ private struct BrowserTabView: View {
             DetectedMediaSheet(playlist: manager.playlist,
                                items: mediaPickerItems,
                                pageTitle: tab.pageTitle,
+                               pageURL: tab.currentURLString,
                                onAdded: { count in
                                    showToast("Playlistに \(count) 件追加しました")
+                               },
+                               onBlobSelected: { media in
+                                   tab.resolveBlobFromPicker(media)
                                })
         }
         .confirmationDialog("この動画をPlaylistに追加しますか？",
@@ -358,8 +362,14 @@ private struct BrowserTabView: View {
                             titleVisibility: .visible) {
             Button("Playlistに追加") {
                 if let media = tab.pendingLongPress {
-                    addToPlaylist(title: tab.pageTitle, url: media.url,
-                                  pageURL: tab.currentURLString)
+                    if media.isBlob {
+                        // A plain Blob (classified at press time):
+                        // confirming starts the in-page transfer.
+                        tab.confirmPendingBlobSave()
+                    } else {
+                        addToPlaylist(title: tab.pageTitle, url: media.url,
+                                      pageURL: tab.currentURLString)
+                    }
                 }
                 tab.pendingLongPress = nil
             }
@@ -1433,9 +1443,10 @@ private struct BrowserTabView: View {
 
     /// ⋯ menu 「Playlistに追加」: a media-file page adds itself;
     /// otherwise the page is (re)scanned and its media are added —
-    /// directly when there is exactly one, via the picker sheet
-    /// when there are several, and with an honest notice when there
-    /// are none (or only unsaveable blob: media).
+    /// directly when there is exactly one saveable URL, via the
+    /// picker sheet when there are several, and a lone blob: goes
+    /// through the classifier (v0.4.14) instead of a blanket
+    /// refusal.
     private func addCurrentPageToPlaylist() {
         if let current = tab.currentURLString, PlaylistMedia.isMediaURL(current) {
             addToPlaylist(title: tab.pageTitle, url: current, pageURL: nil)
@@ -1445,16 +1456,19 @@ private struct BrowserTabView: View {
             await tab.refreshDetectedMedia()
             let found = tab.detectedMedia
             let saveable = found.filter { $0.isHTTP }
-            if saveable.isEmpty {
-                playlistNotice = found.isEmpty
-                    ? "このページに動画が見つかりませんでした"
-                    : "このページの動画は保存できません（blob:）"
-            } else if saveable.count == 1 {
+            if saveable.count == 1 {
                 addToPlaylist(title: tab.pageTitle, url: saveable[0].url,
                               pageURL: tab.currentURLString)
-            } else {
+            } else if saveable.count > 1 {
                 mediaPickerItems = found
                 showMediaPicker = true
+            } else if found.count == 1, found[0].isBlob {
+                tab.resolveBlobFromPicker(found[0])
+            } else if !found.isEmpty {
+                mediaPickerItems = found
+                showMediaPicker = true
+            } else {
+                playlistNotice = "このページに動画が見つかりませんでした"
             }
         }
     }
