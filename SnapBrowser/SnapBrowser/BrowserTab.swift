@@ -101,6 +101,9 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// link simply opened inline (canShowMIMEType is true for PDFs,
     /// so the response policy allowed it) and there was NO way to
     /// save the file at all — the user's 「ダウンロードできない」.
+    /// Since v0.4.13 media files the web view plays inline (a
+    /// direct .mp4/.mp3) count too, so a playing video can be
+    /// saved through the same menu row.
     @Published var currentDocumentName: String?
     /// URL of that inline document, for the re-download request.
     private var currentDocumentURL: URL?
@@ -1034,10 +1037,25 @@ extension BrowserTab: WKNavigationDelegate {
 
     private nonisolated func recordLoadFailure(_ error: Error) {
         let nsError = error as NSError
-        // A cancelled load (user stopped it, or a new navigation
-        // replaced it) is not a failure and must not flash an error.
-        guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled)
-        else { return }
+        // Benign outcomes that are NOT failures and must never
+        // flash the error card:
+        // - NSURLErrorCancelled (-999): the user stopped the load,
+        //   or a new navigation replaced it.
+        // - WebKitErrorDomain 204 (Plug-in handled load): a media
+        //   plug-in took over the load — exactly what a direct
+        //   .mp4/.mp3 link does in WKWebView, where the plug-in
+        //   then plays the file. Up to v0.4.12 this was treated as
+        //   a failure and the card showed 「プラグインが読み込みを
+        //   処理」 over a video that never got to play (v0.4.13
+        //   fix — the user's direct-mp4 report).
+        // - WebKitErrorDomain 102 (Frame load interrupted by
+        //   policy change): our own policy decisions — external
+        //   scheme hand-off, download conversion — superseded the
+        //   load on purpose.
+        if nsError.domain == NSURLErrorDomain
+            && nsError.code == NSURLErrorCancelled { return }
+        if nsError.domain == "WebKitErrorDomain"
+            && (nsError.code == 204 || nsError.code == 102) { return }
         let message = error.localizedDescription
         Task { @MainActor in
             self.loadError = message
@@ -1111,6 +1129,11 @@ extension BrowserTab: WKNavigationDelegate {
     /// (Types WebKit cannot display never reach here — they already
     /// became WKDownloads above. The realistic inline cases are PDF,
     /// plain text, and office files served with a displayable type.)
+    /// Media the web view PLAYS inline (video/*, audio/* — v0.4.13)
+    /// counts as well: playback stays the response policy's answer
+    /// (canShowMIMEType is true for playable media, so it is never
+    /// forced into a download above), and this only ADDS the
+    /// 「このファイルをダウンロード」 affordance for the playing file.
     // nonisolated: these pure helpers are called from the
     // nonisolated navigation-response delegate (v0.4.10 fix — as
     // plain statics on the @MainActor class they were themselves
@@ -1120,9 +1143,16 @@ extension BrowserTab: WKNavigationDelegate {
         "epub", "csv", "tsv", "rtf", "odt", "ods", "odp",
     ]
 
+    nonisolated private static let mediaExtensions: Set<String> = [
+        "mp4", "m4v", "mov", "mp3", "m4a", "aac", "wav", "flac", "ogg", "webm",
+    ]
+
     nonisolated private static func isInlineDocument(url: URL, mimeType: String?) -> Bool {
-        if mimeType?.lowercased() == "application/pdf" { return true }
-        return documentExtensions.contains(url.pathExtension.lowercased())
+        let mime = mimeType?.lowercased() ?? ""
+        if mime == "application/pdf" { return true }
+        if mime.hasPrefix("video/") || mime.hasPrefix("audio/") { return true }
+        let ext = url.pathExtension.lowercased()
+        return documentExtensions.contains(ext) || mediaExtensions.contains(ext)
     }
 
     nonisolated private static func documentName(url: URL, mimeType: String?) -> String {
