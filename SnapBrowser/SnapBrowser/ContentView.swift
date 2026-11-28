@@ -190,6 +190,20 @@ private struct BrowserTabView: View {
     @State private var toastText: String?
     @State private var toastTask: Task<Void, Never>?
     @State private var stripFrame: CGRect = .zero
+    /// Strip chip frames in the strip content's coordinate space
+    /// (v0.4.11), reported by each chip as it is laid out — the
+    /// drag-reorder maths works from the snapshot taken when a
+    /// drag starts, so mid-drag layout changes can't skew it.
+    @State private var stripChipFrames: [UUID: CGRect] = [:]
+    /// Strip drag-reorder state (v0.4.11): which chip is being
+    /// dragged, the slot it started in, and the slot it would land
+    /// in if released now. The model is NOT moved during the drag;
+    /// the other chips shift sideways to open the gap (see
+    /// stripReorderShift) and the move commits on release.
+    @State private var stripDragID: UUID?
+    @State private var stripDragStartIndex = 0
+    @State private var stripDragTargetIndex = 0
+    @State private var stripDragStartFrames: [UUID: CGRect] = [:]
     @FocusState private var addressFocused: Bool
     @State private var suggestions: [String] = []
     @State private var suggestTask: Task<Void, Never>?
@@ -220,9 +234,9 @@ private struct BrowserTabView: View {
                     }
                 }
                 .zIndex(20)
-            if geo.size.width >= 700 {
-                tabStrip
-            }
+            tabStrip(chipWidth: geo.size.width >= 700
+                        ? 180
+                        : max(104, min(160, geo.size.width * 0.45)))
             if let item = tab.archiveSnapshot {
                 archiveBanner(item)
             } else if tab.isPrivate {
@@ -543,7 +557,14 @@ private struct BrowserTabView: View {
         .frame(height: 46)
         .background(Capsule().fill(Theme.surface))
         .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
-        .padding(.horizontal, 12)
+        // Leading inset (v0.4.11): the iPadOS window buttons
+        // (traffic lights) overlay the window's top-left corner and
+        // used to sit ON the pill — over its icon and text — in
+        // floating windows. The pill now starts to the right of the
+        // button cluster at every window size, the way Brave's iPad
+        // toolbar reserves that space: one layout, never a collision.
+        .padding(.leading, 72)
+        .padding(.trailing, 12)
         .padding(.vertical, 8)
     }
 
@@ -883,28 +904,52 @@ private struct BrowserTabView: View {
         .overlay(alignment: .bottom) { Divider() }
     }
 
-    // MARK: Tab strip (wide windows only, Brave-style tab bar)
+    // MARK: Tab strip (always visible, Brave-style tab bar)
 
-    /// Flush strip directly under the address bar, shown only when the
-    /// window is wide (≥700pt — full-screen / large floating windows on
-    /// iPad). Narrow windows keep the tab-count button + grid overview.
+    /// Flush strip directly under the address bar, ALWAYS visible
+    /// (v0.4.11 — the ≥700pt gate is gone): like Brave on iPad, the
+    /// strip survives even the smallest floating window, the chips
+    /// just get narrower and scroll sideways, and the active chip is
+    /// kept scrolled into view. Even a single tab keeps its chip.
     /// Order in the column: address bar → tab strip → archive/private
     /// banner → progress → page, so the banners never fight the strip.
-    private var tabStrip: some View {
+    private func tabStrip(chipWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 5) {
-                    ForEach(manager.tabs) { t in
-                        TabStripChip(tab: t,
-                                     isActive: t.id == manager.activeTabID,
-                                     stripFrame: stripFrame,
-                                     onSelect: { manager.selectTab(t) },
-                                     onClose: { manager.closeTab(t) },
-                                     onTearOff: { tearOff(t) })
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        ForEach(Array(manager.tabs.enumerated()), id: \.element.id) { index, t in
+                            TabStripChip(tab: t,
+                                         isActive: t.id == manager.activeTabID,
+                                         stripFrame: stripFrame,
+                                         chipWidth: chipWidth,
+                                         reorderShift: stripReorderShift(for: index, chipWidth: chipWidth),
+                                         onSelect: { manager.selectTab(t) },
+                                         onClose: { manager.closeTab(t) },
+                                         onTearOff: { tearOff(t) },
+                                         onReportFrame: { stripChipFrames[t.id] = $0 },
+                                         onDragChanged: { tab, translation, location in
+                                             stripDragChanged(tab: tab, translation: translation, location: location)
+                                         },
+                                         onDragEnded: { tab, releasedOutside in
+                                             stripDragEnded(tab: tab, releasedOutside: releasedOutside)
+                                         },
+                                         onDragCancelled: { stripDragReset() })
+                                .id(t.id)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .coordinateSpace(name: "tabStripContent")
+                }
+                .onAppear {
+                    proxy.scrollTo(manager.activeTabID, anchor: .center)
+                }
+                .onChange(of: manager.activeTabID) { _, id in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(id, anchor: .center)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
             }
             Button {
                 _ = manager.newTab()
@@ -927,6 +972,92 @@ private struct BrowserTabView: View {
                     }
             }
         }
+        .onDisappear { stripDragReset() }
+    }
+
+    // MARK: Strip drag-reorder (v0.4.11)
+
+    /// How far the chip at `index` slides sideways to open the gap
+    /// while another chip is being drag-reordered: chips between the
+    /// dragged chip's start slot and its current target slot shift
+    /// by exactly one chip step toward the start slot, so the hole
+    /// the dragged chip will land in is always visible. The dragged
+    /// chip itself never gets a shift — it follows the finger.
+    private func stripReorderShift(for index: Int, chipWidth: CGFloat) -> CGFloat {
+        guard stripDragID != nil, index != stripDragStartIndex else { return 0 }
+        let step = chipWidth + 5
+        if stripDragStartIndex < stripDragTargetIndex,
+           index > stripDragStartIndex, index <= stripDragTargetIndex {
+            return -step
+        }
+        if stripDragTargetIndex < stripDragStartIndex,
+           index < stripDragStartIndex, index >= stripDragTargetIndex {
+            return step
+        }
+        return 0
+    }
+
+    /// Feeds the dragged chip's gesture into the reorder state. The
+    /// first call of a drag snapshots the chips' frames; later calls
+    /// only recompute the landing slot from the dragged chip's
+    /// centre (start-frame centre + finger translation, which is the
+    /// same vector in the content space as in the gesture's global
+    /// space). The landing slot is the count of other chips whose
+    /// start centres the dragged centre has crossed — with
+    /// moveTab's remove-and-insert semantics that is exactly the
+    /// index the dragged tab ends up at. Reordering is computed
+    /// only while the pointer stays inside the strip's tear-off
+    /// band (±40pt): outside it the gesture is a tear-off, and the
+    /// order must not churn under a chip that is leaving.
+    private func stripDragChanged(tab: BrowserTab, translation: CGSize, location: CGPoint) {
+        if stripDragID == nil {
+            guard let index = manager.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+            stripDragID = tab.id
+            stripDragStartIndex = index
+            stripDragTargetIndex = index
+            stripDragStartFrames = stripChipFrames
+        }
+        guard stripDragID == tab.id,
+              let startFrame = stripDragStartFrames[tab.id] else { return }
+        if stripFrame != .zero,
+           !stripFrame.insetBy(dx: -40, dy: -40).contains(location) { return }
+        let centerX = startFrame.midX + translation.width
+        var target = 0
+        for other in manager.tabs where other.id != tab.id {
+            if let frame = stripDragStartFrames[other.id], frame.midX < centerX {
+                target += 1
+            }
+        }
+        if target != stripDragTargetIndex {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                stripDragTargetIndex = target
+            }
+        }
+    }
+
+    /// Release inside the strip: commit the move. Release outside
+    /// is the tear-off path — the chip fires onTearOff itself, and
+    /// a torn-off tab must not also reorder. Either way the drag
+    /// state resets in the same animation, so the shifted chips
+    /// settle into the final layout instead of snapping.
+    private func stripDragEnded(tab: BrowserTab, releasedOutside: Bool) {
+        let shouldCommit = !releasedOutside
+            && stripDragID == tab.id
+            && stripDragTargetIndex != stripDragStartIndex
+        let from = stripDragStartIndex
+        let to = stripDragTargetIndex
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if shouldCommit {
+                manager.moveTab(fromIndex: from, toIndex: to)
+            }
+            stripDragReset()
+        }
+    }
+
+    private func stripDragReset() {
+        stripDragID = nil
+        stripDragStartFrames = [:]
+        stripDragTargetIndex = stripDragStartIndex
     }
 
     /// Tear-off: ask UIKit for a NEW scene carrying this tab. The
@@ -1311,8 +1442,14 @@ enum TabTearOff {
 
 /// One chip in the tab strip: letter tile / aperture + title + ×.
 /// The main area selects the tab (tap), the × closes it, and a
-/// LONG-PRESS-initiated drag that ends well OUTSIDE the strip's frame
-/// tears the tab off into a new window (see BrowserTabView.tearOff).
+/// LONG-PRESS-initiated drag does two jobs (v0.4.11): dragged
+/// SIDEWAYS inside the strip it reorders the tabs — the parent
+/// shifts the other chips to open the gap and commits the move on
+/// release (see BrowserTabView.stripDragChanged) — while a drag
+/// that ends well OUTSIDE the strip's frame tears the tab off into
+/// a new window (see BrowserTabView.tearOff). Horizontal = reorder,
+/// out = tear-off; the two never compete because the reorder maths
+/// only runs while the pointer is inside the strip's band.
 /// v0.4.3 used a plain DragGesture on the chip, which the strip's
 /// horizontal ScrollView almost always claimed first — the chip just
 /// scrolled inside the strip and the tear-off never fired. The
@@ -1327,9 +1464,26 @@ private struct TabStripChip: View {
     @ObservedObject var tab: BrowserTab
     let isActive: Bool
     let stripFrame: CGRect
+    /// Chip width for the current window size (v0.4.11): 180pt in
+    /// wide windows, narrower in small floating windows so titles
+    /// stay partly readable instead of the strip vanishing.
+    let chipWidth: CGFloat
+    /// Sideways shift that opens the landing gap while ANOTHER chip
+    /// is being drag-reordered (0 for the dragged chip itself and
+    /// whenever no reorder is in flight).
+    var reorderShift: CGFloat
     var onSelect: () -> Void
     var onClose: () -> Void
     var onTearOff: () -> Void
+    /// Reports this chip's layout frame in the strip content's
+    /// coordinate space (the reorder maths' raw material). Offsets
+    /// do not affect layout frames, so reports stay slot-true even
+    /// mid-drag.
+    var onReportFrame: (CGRect) -> Void
+    /// Drag lifecycle for the parent's reorder state.
+    var onDragChanged: (BrowserTab, CGSize, CGPoint) -> Void
+    var onDragEnded: (BrowserTab, Bool) -> Void
+    var onDragCancelled: () -> Void
 
     @State private var dragOffset: CGSize = .zero
     @State private var isDragging = false
@@ -1370,7 +1524,7 @@ private struct TabStripChip: View {
             .buttonStyle(.plain)
         }
         .padding(.leading, 8)
-        .frame(width: 180, height: 32)
+        .frame(width: chipWidth, height: 32)
         .background(
             RoundedRectangle(cornerRadius: 7)
                 .fill(isActive ? Theme.paper : Theme.surface)
@@ -1380,7 +1534,7 @@ private struct TabStripChip: View {
                 .strokeBorder(isActive ? Theme.cobalt : Theme.hairline,
                               lineWidth: isActive ? 1.5 : 0.5)
         )
-        .offset(dragOffset)
+        .offset(x: dragOffset.width + reorderShift, y: dragOffset.height)
         .scaleEffect(isDragging ? 1.05 : 1)
         .opacity(isDragging ? 0.92 : 1)
         .shadow(color: .black.opacity(isDragging ? 0.3 : 0),
@@ -1399,10 +1553,27 @@ private struct TabStripChip: View {
         .onDisappear {
             dragOffset = .zero
             isDragging = false
+            onDragCancelled()
         }
         .onAppear {
             dragOffset = .zero
             isDragging = false
+        }
+        // Frame reporting for the reorder maths (v0.4.11): the
+        // layout frame in the strip content's coordinate space,
+        // re-reported whenever layout moves this chip. A cancelled
+        // drag also surfaces here as a disappearance, which is how
+        // the parent's reorder state gets its cancel signal above.
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        onReportFrame(proxy.frame(in: .named("tabStripContent")))
+                    }
+                    .onChange(of: proxy.frame(in: .named("tabStripContent"))) { _, frame in
+                        onReportFrame(frame)
+                    }
+            }
         }
         .contextMenu {
             Button {
@@ -1441,6 +1612,7 @@ private struct TabStripChip: View {
                 if case .second(true, let drag?) = value {
                     isDragging = true
                     dragOffset = drag.translation
+                    onDragChanged(tab, drag.translation, drag.location)
                 }
             }
             .onEnded { value in
@@ -1450,6 +1622,10 @@ private struct TabStripChip: View {
                     return !stripFrame.insetBy(dx: -40, dy: -40)
                         .contains(drag.location)
                 }()
+                // The parent's reorder commit runs first, while its
+                // drag state is still intact; a release outside the
+                // strip tells it not to commit (tear-off instead).
+                onDragEnded(tab, releasedOutside)
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                     dragOffset = .zero
                     isDragging = false

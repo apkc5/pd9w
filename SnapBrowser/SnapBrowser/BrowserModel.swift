@@ -135,6 +135,32 @@ final class BrowserModel: ObservableObject {
         persistSession()
     }
 
+    /// Closes every tab of one segment (tab overview's
+    /// 「すべてのタブを閉じる」, v0.4.11). The other segment is
+    /// untouched. Closed normal tabs are recorded for restore like
+    /// any close (recordClosedTab itself skips private tabs and
+    /// blank start pages). If nothing remains at all, a fresh start
+    /// tab is created, mirroring closeTab's last-tab behaviour; if
+    /// the active tab was among the closed, the first remaining tab
+    /// becomes active.
+    func closeTabs(isPrivate: Bool) {
+        let targets = tabs.filter { $0.isPrivate == isPrivate }
+        guard !targets.isEmpty else { return }
+        for tab in targets {
+            recordClosedTab(tab)
+            tab.teardown()
+        }
+        tabs.removeAll { $0.isPrivate == isPrivate }
+        if tabs.isEmpty {
+            let fresh = makeTab()
+            tabs = [fresh]
+            activeTabID = fresh.id
+        } else if !tabs.contains(where: { $0.id == activeTabID }) {
+            activeTabID = tabs[0].id
+        }
+        persistSession()
+    }
+
     func selectTab(_ tab: BrowserTab) {
         guard tab.id != activeTabID else { return }
         activeTab.capturePreview()

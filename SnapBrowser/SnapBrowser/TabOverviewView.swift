@@ -1,60 +1,91 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Tab overview as a GRID of small cards, modelled on Chrome on
-/// iPad's tab screen: fixed-feeling cards (2 columns in a narrow
-/// floating window, 4 on a full-screen iPad), a round ＋ button at
-/// the bottom centre for a new tab, and a 「完了」 button at the
-/// bottom right to close — no ＋ card in the grid, no × in the
-/// header (closing happens via 完了 or by tapping a card). Each card
-/// keeps its header band (favicon tile + title + ×) over a preview,
-/// the current tab framed in cobalt. Layout inspiration only — no
-/// Chrome assets, and the ＋ is Cobalt, not Chrome blue.
+/// Tab overview, modelled on Brave's iPad tab page (layout and
+/// interaction only — no Brave assets or naming): a ⋯ menu and a
+/// search pill in the header, a grid of cards, and a bottom bar
+/// with a round ＋ (new tab), a 「N タブ / プライベート」 tray
+/// switch in the middle, and a round ✓ to close. Normal and
+/// private tabs live in SEPARATE trays (v0.4.11) instead of one
+/// mixed grid with eye-off badges. The ⋯ menu carries 履歴,
+/// 閉じたタブを開く, タブを選択 (multi-select mode) and
+/// すべてのタブを閉じる for the current tray. In multi-select
+/// mode cards grow check badges, taps toggle selection instead of
+/// switching, drag-reorder is off, and the bottom bar becomes the
+/// selection actions. The grid/list view toggle from Brave's
+/// header was deliberately NOT ported (see BUILD_LOG 第20次）.
 ///
-/// v0.4.5 column-count post-mortem: v0.4.3/v0.4.4 used
-/// `GridItem(.adaptive(minimum: 170))`, which on the user's device
-/// collapsed to ONE full-width column in his ~380pt floating window.
-/// That was arithmetic, not a stale build (the 170 minimum was
-/// verified in the shipped source): two adaptive columns need
-/// 2×170 + 16 spacing = 356pt of content width, i.e. a window of at
-/// least 388pt once the grid's 16pt side padding is counted — his
-/// window is just under that, so adaptive legitimately computed one
-/// column and then stretched it to the full content width, and the
-/// portrait 3:4 preview made the single card fill the screen. The
-/// fix is to stop asking adaptive: the column count is decided
-/// explicitly from the container width (see columnCount(forWidth:)),
-/// and fixed flexible tracks mean a lone tab keeps its column width
-/// instead of stretching — exactly what Chrome's grid does.
+/// Column count (kept from v0.4.5): decided explicitly from the
+/// container width — never `GridItem(.adaptive)`, which collapsed
+/// to one stretched full-width column in the user's ~380pt
+/// floating window (two adaptive columns need 2×170 + 16 spacing
+/// + 32 padding = a ≥388pt window; his was just under).
 ///
-/// All metrics derive from the GeometryReader's container size (the
-/// window the view is actually in) — v0.4 removed every UIScreen-based
-/// measurement after the carousel broke inside iPad floating windows,
-/// and the header keeps its explicit top inset because a
-/// fullScreenCover's safe area does not clear the iPadOS window chrome
-/// (traffic-light buttons) the way the main window's does. Previews are
-/// captured at the active window's size (see
-/// BrowserTab.capturePreview(matching:)).
+/// Card containment (v0.4.11, the 「広がってる」 fix): up to
+/// v0.4.10 a card's size was negotiated — the preview ZStack used
+/// `frame(maxWidth: .infinity)` + `aspectRatio(.fit)` around a
+/// `scaledToFill` image whose ideal size is the full-window
+/// capture, and the system `.onDrag` preview rasterised the card
+/// at whatever size that negotiation produced. A card could
+/// therefore paint wider than its grid cell, over its neighbour,
+/// with the drag preview's × floating beside the real one (the
+/// user's photo: the active card lying on top of the video tab's
+/// card). Now the parent computes the cell width arithmetically
+/// from the container and every card is HARD-framed to it (width
+/// on the card, width×height on the preview, clipped), and the
+/// drag uses a custom preview that is the same hard-framed card —
+/// a card physically cannot exceed its cell in any state.
+///
+/// All metrics derive from the GeometryReader's container size —
+/// v0.4 removed every UIScreen-based measurement after the
+/// carousel broke inside iPad floating windows. The header keeps
+/// its explicit top inset because a fullScreenCover's safe area
+/// does not clear the iPadOS window buttons (traffic lights).
 struct TabOverviewView: View {
     @ObservedObject var manager: BrowserModel
     @Environment(\.dismiss) private var dismiss
-    /// Tab search (v0.4.9): filters the grid by title / URL,
+
+    /// Which tray the grid shows. The overview opens on the tray
+    /// the ACTIVE tab belongs to.
+    private enum Segment {
+        case normal, private
+    }
+    @State private var segment: Segment
+    /// Tab search: filters the current tray by title / URL,
     /// case-insensitive substring — same rule as the other searches.
     @State private var query = ""
-    /// Card drag-reorder (v0.4.10): the tab currently being dragged,
-    /// for the dimmed-source-card effect and the drop delegates.
+    /// Multi-select mode (v0.4.11): card taps toggle membership in
+    /// `selectedIDs`; the × buttons hide; drag-reorder is off.
+    @State private var selecting = false
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var showHistory = false
+    @State private var showCloseAllConfirm = false
+    /// Card drag-reorder: the tab currently being dragged, for the
+    /// dimmed-source-card effect and the drop delegates.
     @State private var draggingTabID: UUID?
 
-    /// Reorder is only offered on the full, unfiltered list:
-    /// reordering a filtered subset would move cards the user can't
-    /// see and scramble the real order, so searching disables it.
+    init(manager: BrowserModel) {
+        _manager = ObservedObject(wrappedValue: manager)
+        _segment = State(initialValue: manager.activeTab.isPrivate ? .private : .normal)
+    }
+
+    private var normalTabs: [BrowserTab] { manager.tabs.filter { !$0.isPrivate } }
+    private var privateTabs: [BrowserTab] { manager.tabs.filter { $0.isPrivate } }
+    private var segmentTabs: [BrowserTab] {
+        segment == .private ? privateTabs : normalTabs
+    }
+
+    /// Reorder is only offered on the full, unfiltered list in
+    /// normal mode: reordering a filtered subset — or a selection —
+    /// would move cards the user can't see and scramble the order.
     private var isSearching: Bool {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var visibleTabs: [BrowserTab] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return manager.tabs }
-        return manager.tabs.filter { tab in
+        guard !q.isEmpty else { return segmentTabs }
+        return segmentTabs.filter { tab in
             tab.pageTitle.lowercased().contains(q)
                 || tab.addressText.lowercased().contains(q)
                 || (tab.currentURLString?.lowercased().contains(q) ?? false)
@@ -78,55 +109,34 @@ struct TabOverviewView: View {
     var body: some View {
         GeometryReader { geo in
             let container = geo.size
-            // Header slot includes the top inset that clears the window
-            // chrome overlaying the cover.
-            let headerHeight: CGFloat = 76
+            let columnCount = Self.columnCount(forWidth: container.width)
             let columns = Array(
                 repeating: GridItem(.flexible(), spacing: 16),
-                count: Self.columnCount(forWidth: container.width))
-            // Preview aspect follows the container like Chrome's grid:
-            // portrait windows get portrait (3:4) cards, landscape
-            // windows get wide (4:3) cards. Previews are captured at
-            // the window's real size, so matching the frame to the
-            // container's orientation also reduces cropping.
+                count: columnCount)
+            // The cell width, computed — not negotiated. Every card
+            // is framed to exactly this (see the header comment).
+            let cardWidth = (container.width - 32 - 16 * CGFloat(columnCount - 1))
+                / CGFloat(columnCount)
+            // Preview aspect follows the container like Brave's /
+            // Chrome's grids: portrait windows get portrait (3:4)
+            // cards, landscape windows get wide (4:3) cards.
+            // Previews are captured at the window's real size, so
+            // matching the frame to the container's orientation also
+            // reduces cropping.
             let previewAspect: CGFloat = container.height > container.width
                 ? 3.0 / 4.0 : 4.0 / 3.0
 
             VStack(spacing: 0) {
                 header
-                    .frame(height: headerHeight)
-                searchField
                 ScrollView {
                     if visibleTabs.isEmpty {
-                        Text("「\(query)」に一致するタブがありません")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        emptyState
                             .frame(maxWidth: .infinity)
                             .padding(.top, 40)
                     }
                     LazyVGrid(columns: columns, spacing: 16) {
                         ForEach(visibleTabs) { tab in
-                            TabCard(tab: tab,
-                                    isActive: tab.id == manager.activeTabID,
-                                    previewAspect: previewAspect,
-                                    onSelect: {
-                                        manager.selectTab(tab)
-                                        dismiss()
-                                    },
-                                    onClose: {
-                                        manager.closeTab(tab)
-                                    })
-                                // The dragged card dims; the OTHER
-                                // cards slide aside live as the drag
-                                // crosses them (the drop delegate
-                                // reorders the model mid-drag), which
-                                // is the insertion feedback.
-                                .opacity(draggingTabID == tab.id ? 0.35 : 1)
-                                .tabReorderDragDrop(
-                                    enabled: !isSearching,
-                                    tab: tab,
-                                    manager: manager,
-                                    draggingID: $draggingTabID)
+                            card(for: tab, cardWidth: cardWidth, previewAspect: previewAspect)
                         }
                     }
                     .padding(16)
@@ -135,7 +145,11 @@ struct TabOverviewView: View {
                     .onDrop(of: [.text],
                             delegate: TabGridCatchAllDropDelegate(draggingID: $draggingTabID))
                 }
-                bottomBar
+                if selecting {
+                    selectionBar
+                } else {
+                    bottomBar
+                }
             }
             .frame(width: container.width, height: container.height)
         }
@@ -145,9 +159,81 @@ struct TabOverviewView: View {
             manager.captureAllPreviews()
         }
         .onChange(of: query) { _ in draggingTabID = nil }
+        .onChange(of: segment) { _ in
+            // A selection belongs to one tray; switching trays ends
+            // selection mode rather than carrying invisible picks.
+            selecting = false
+            selectedIDs = []
+            draggingTabID = nil
+        }
+        .sheet(isPresented: $showHistory) {
+            HistoryView(store: manager.history,
+                        onOpen: { url in
+                            showHistory = false
+                            manager.openInActiveTab(url)
+                            dismiss()
+                        })
+        }
+        .confirmationDialog("このトレイのタブをすべて閉じますか？",
+                            isPresented: $showCloseAllConfirm,
+                            titleVisibility: .visible) {
+            Button("すべてのタブを閉じる", role: .destructive) { closeAllInSegment() }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text(segment == .private
+                 ? "プライベートタブがすべて閉じられます。"
+                 : "通常タブがすべて閉じられます。")
+        }
     }
 
-    // MARK: Search field (v0.4.9)
+    // MARK: Header (Brave-style: ⋯ menu + search pill)
+
+    /// The top inset clears the iPadOS window buttons that overlay
+    /// a fullScreenCover's top-left corner (v0.3's header collided
+    /// with them in floating windows).
+    private var header: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button {
+                    showHistory = true
+                } label: {
+                    Label("履歴", systemImage: "clock.arrow.circlepath")
+                }
+                Button {
+                    manager.restoreClosedTab()
+                    dismiss()
+                } label: {
+                    Label("閉じたタブを開く", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(manager.closedTabs.isEmpty)
+                Button {
+                    selecting = true
+                } label: {
+                    Label("タブを選択", systemImage: "checkmark.circle")
+                }
+                .disabled(selecting)
+                Divider()
+                Button(role: .destructive) {
+                    showCloseAllConfirm = true
+                } label: {
+                    Label("すべてのタブを閉じる", systemImage: "xmark.bin")
+                }
+                .disabled(segmentTabs.isEmpty)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.bold())
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            searchField
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 20)
+        .padding(.bottom, 10)
+        .background(Theme.surface)
+        .overlay(alignment: .bottom) { Divider() }
+    }
 
     private var searchField: some View {
         HStack(spacing: 8) {
@@ -171,34 +257,116 @@ struct TabOverviewView: View {
         .frame(height: 40)
         .background(Capsule().fill(Theme.paper))
         .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Theme.surface)
-        .overlay(alignment: .bottom) { Divider() }
     }
 
-    // MARK: Bottom bar (Chrome layout: round ＋ centre, 完了 right)
-
-    /// The round ＋ is a deliberate, single-screen exception to the
-    /// app's no-floating-buttons rule — Chrome's tab screen has it,
-    /// the user asked for Chrome's structure, and it lives in this
-    /// flush bottom bar rather than floating over content.
-    private var bottomBar: some View {
-        ZStack {
-            HStack {
-                Spacer()
-                Button("完了") { dismiss() }
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Theme.cobalt)
-                    .frame(height: 44)
-                    .padding(.horizontal, 8)
-                    .contentShape(Rectangle())
+    private var emptyState: some View {
+        Group {
+            if isSearching {
+                Text("「\(query)」に一致するタブがありません")
+            } else if segment == .private {
+                Text("プライベートタブはまだありません")
+            } else {
+                Text("タブがありません")
             }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    }
+
+    // MARK: Cards
+
+    /// One grid card, with drag-reorder attached only in normal
+    /// mode on the unfiltered tray. The drag carries a CUSTOM
+    /// preview — the same hard-framed card — because the default
+    /// preview rasterises the source view at its own negotiated
+    /// size, which is how an oversized card image came to float
+    /// over the neighbouring card in the user's photo.
+    @ViewBuilder
+    private func card(for tab: BrowserTab, cardWidth: CGFloat, previewAspect: CGFloat) -> some View {
+        let card = TabCard(tab: tab,
+                           isActive: tab.id == manager.activeTabID,
+                           cardWidth: cardWidth,
+                           previewAspect: previewAspect,
+                           selecting: selecting,
+                           isSelected: selectedIDs.contains(tab.id),
+                           onSelect: { handleCardTap(tab) },
+                           onClose: { manager.closeTab(tab) })
+        if selecting || isSearching {
+            card
+        } else {
+            card
+                // The dragged card dims; the OTHER cards slide aside
+                // live as the drag crosses them (the drop delegate
+                // reorders the model mid-drag), which is the
+                // insertion feedback.
+                .opacity(draggingTabID == tab.id ? 0.35 : 1)
+                .onDrag {
+                    draggingTabID = tab.id
+                    return NSItemProvider(object: tab.id.uuidString as NSString)
+                } preview: {
+                    TabCard(tab: tab,
+                            isActive: tab.id == manager.activeTabID,
+                            cardWidth: cardWidth,
+                            previewAspect: previewAspect,
+                            selecting: false,
+                            isSelected: false,
+                            onSelect: {},
+                            onClose: {})
+                }
+                .onDrop(of: [.text],
+                        delegate: TabReorderDropDelegate(target: tab,
+                                                         manager: manager,
+                                                         draggingID: $draggingTabID))
+        }
+    }
+
+    private func handleCardTap(_ tab: BrowserTab) {
+        if selecting {
+            if selectedIDs.contains(tab.id) {
+                selectedIDs.remove(tab.id)
+            } else {
+                selectedIDs.insert(tab.id)
+            }
+        } else {
+            manager.selectTab(tab)
+            dismiss()
+        }
+    }
+
+    // MARK: Bottom bar (Brave-style: round ＋ left, tray switch centre, round ✓ right)
+
+    /// The round buttons are a deliberate, single-screen exception
+    /// to the app's no-floating-buttons rule — Brave's tab page has
+    /// them, the user asked for Brave's structure, and they live in
+    /// this flush bottom bar rather than floating over content.
+    private var bottomBar: some View {
+        HStack(spacing: 12) {
             Button {
-                manager.newTab()
+                if segment == .private {
+                    manager.newPrivateTab()
+                } else {
+                    manager.newTab()
+                }
                 dismiss()
             } label: {
                 Image(systemName: "plus")
+                    .font(.title3.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(Theme.cobalt))
+                    .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
+                    .contentShape(Circle())
+            }
+            Spacer()
+            Picker("タブの種類", selection: $segment) {
+                Text("\(normalTabs.count) タブ").tag(Segment.normal)
+                Text("プライベート \(privateTabs.count)").tag(Segment.private)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 300)
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "checkmark")
                     .font(.title3.bold())
                     .foregroundStyle(.white)
                     .frame(width: 52, height: 52)
@@ -213,33 +381,83 @@ struct TabOverviewView: View {
         .overlay(alignment: .top) { Divider() }
     }
 
-    // MARK: Header (title only — closing lives in the bottom bar)
+    // MARK: Selection-mode bottom bar
 
-    private var header: some View {
-        HStack(spacing: 10) {
-            Text("タブ")
-                .font(.title2.bold())
+    private var selectionBar: some View {
+        HStack(spacing: 8) {
+            Button("キャンセル") { exitSelection() }
+                .font(.body)
                 .foregroundStyle(Theme.ink)
-            Text("\(manager.tabs.count)件")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .frame(height: 44)
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
             Spacer()
+            Button {
+                closeSelected()
+            } label: {
+                Text(selectedIDs.isEmpty
+                     ? "選択したタブを閉じる"
+                     : "選択したタブを閉じる（\(selectedIDs.count)件）")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(selectedIDs.isEmpty ? Color.secondary : Color.red)
+            }
+            .disabled(selectedIDs.isEmpty)
+            .frame(height: 44)
+            .contentShape(Rectangle())
+            Button("すべて閉じる") { showCloseAllConfirm = true }
+                .font(.body)
+                .foregroundStyle(Color.red)
+                .frame(height: 44)
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+                .disabled(segmentTabs.isEmpty)
         }
         .padding(.horizontal, 16)
-        // Extra top padding: inside a fullScreenCover the iPadOS window
-        // controls overlay the top-left corner (v0.3's header collided
-        // with them in floating windows).
-        .padding(.top, 20)
-        .padding(.bottom, 10)
+        .padding(.vertical, 10)
         .background(Theme.surface)
-        .overlay(alignment: .bottom) { Divider() }
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func exitSelection() {
+        selecting = false
+        selectedIDs = []
+    }
+
+    private func closeSelected() {
+        let targets = manager.tabs.filter { selectedIDs.contains($0.id) }
+        for tab in targets { manager.closeTab(tab) }
+        exitSelection()
+        settleSegmentAfterClose()
+    }
+
+    private func closeAllInSegment() {
+        manager.closeTabs(isPrivate: segment == .private)
+        exitSelection()
+        settleSegmentAfterClose()
+    }
+
+    /// After a bulk close the current tray may be empty while the
+    /// other still has tabs (or holds the fresh start tab created
+    /// when everything closed) — follow the content instead of
+    /// staring at an empty tray.
+    private func settleSegmentAfterClose() {
+        if segmentTabs.isEmpty {
+            segment = (segment == .private) ? .normal : .private
+        }
     }
 }
 
 private struct TabCard: View {
     @ObservedObject var tab: BrowserTab
     let isActive: Bool
+    /// The grid cell's width, computed by the parent. The card and
+    /// its preview are framed to it EXACTLY (v0.4.11 containment
+    /// fix) — no ideal-size negotiation anywhere in the card.
+    let cardWidth: CGFloat
     let previewAspect: CGFloat
+    /// Multi-select mode: the × hides and a check badge shows.
+    let selecting: Bool
+    let isSelected: Bool
     var onSelect: () -> Void
     var onClose: () -> Void
 
@@ -248,6 +466,7 @@ private struct TabCard: View {
             cardHeader
             preview
         }
+        .frame(width: cardWidth)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
@@ -255,8 +474,40 @@ private struct TabCard: View {
                 .strokeBorder(isActive ? Theme.cobalt : Theme.hairline,
                               lineWidth: isActive ? 2.5 : 0.5)
         )
+        .overlay {
+            if selecting && isSelected {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Theme.cobalt.opacity(0.10))
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if selecting {
+                selectionBadge
+            }
+        }
         .contentShape(RoundedRectangle(cornerRadius: 16))
         .onTapGesture { onSelect() }
+    }
+
+    private var selectionBadge: some View {
+        ZStack {
+            Circle()
+                .fill(isSelected ? Theme.cobalt : Color.white.opacity(0.9))
+                .frame(width: 24, height: 24)
+                .overlay(
+                    Circle().strokeBorder(isSelected ? Theme.cobalt : Theme.hairline,
+                                          lineWidth: 1)
+                )
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+            }
+        }
+        .padding(.top, 10)
+        .padding(.trailing, 10)
+        .allowsHitTesting(false)
     }
 
     private var cardHeader: some View {
@@ -277,12 +528,14 @@ private struct TabCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            if !selecting {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -316,16 +569,16 @@ private struct TabCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity)
-        // Preview window follows the container's orientation (4:3
-        // landscape / 3:4 portrait, decided by the parent grid); the
-        // image fills it and is clipped (no letterboxing).
-        .aspectRatio(previewAspect, contentMode: .fit)
+        // Hard frame (v0.4.11): exactly the cell width and the
+        // height the aspect rule gives it. The image fills and is
+        // clipped INSIDE this frame — it can no longer negotiate a
+        // size of its own and paint over the neighbouring card.
+        .frame(width: cardWidth, height: cardWidth / previewAspect)
         .clipped()
     }
 }
 
-// MARK: - Card drag-reorder (v0.4.10)
+// MARK: - Card drag-reorder
 
 /// Per-card drop target. The reorder happens LIVE in dropEntered —
 /// as the dragged card crosses a target, the model moves the dragged
@@ -336,6 +589,10 @@ private struct TabCard: View {
 /// events from a fast drag still converges on the pointer's card.
 /// iOS's drag interaction itself starts on long-press, which is
 /// what keeps plain taps (select) and the × button unaffected.
+/// With the segmented trays (v0.4.11) the indices are the model's
+/// global ones: moving the dragged tab to the target's global slot
+/// changes the two tabs' relative order inside their tray exactly
+/// as the grid shows it.
 private struct TabReorderDropDelegate: DropDelegate {
     let target: BrowserTab
     let manager: BrowserModel
@@ -376,30 +633,5 @@ private struct TabGridCatchAllDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         draggingID = nil
         return true
-    }
-}
-
-private extension View {
-    /// Attaches drag-reorder only when `enabled` (i.e. the grid is
-    /// not being search-filtered). A disabled card is a plain card:
-    /// tap selects, × closes, exactly as before.
-    @ViewBuilder
-    func tabReorderDragDrop(enabled: Bool,
-                            tab: BrowserTab,
-                            manager: BrowserModel,
-                            draggingID: Binding<UUID?>) -> some View {
-        if enabled {
-            self
-                .onDrag {
-                    draggingID.wrappedValue = tab.id
-                    return NSItemProvider(object: tab.id.uuidString as NSString)
-                }
-                .onDrop(of: [.text],
-                        delegate: TabReorderDropDelegate(target: tab,
-                                                         manager: manager,
-                                                         draggingID: draggingID))
-        } else {
-            self
-        }
     }
 }
