@@ -59,6 +59,20 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// In-flight blob transfers: bridge id → download item id.
     private var blobTransfers: [String: UUID] = [:]
 
+    /// The model's playlist store, wired in makeTab (v0.4.14):
+    /// plain Blobs classified in the page are streamed into it,
+    /// and its downloads borrow this tab's cookies / UA.
+    var playlistStore: PlaylistStore?
+    /// Blob→Playlist transfers in flight: transfer id → the
+    /// context captured when the save was initiated.
+    private var playlistBlobContext: [String: (title: String, pageURL: String?)] = [:]
+    /// Blob→Playlist transfers: transfer id → playlist item id.
+    private var playlistBlobItems: [String: UUID] = [:]
+    /// A long-pressed blob that classified as a plain Blob (A):
+    /// the add confirmation is showing, and confirming starts the
+    /// transfer from the frame that generated the blob.
+    private var pendingBlobSave: (url: String, frame: WKFrameInfo?, title: String)?
+
     /// Set while this tab displays a saved snapshot instead of the live page.
     @Published var archiveSnapshot: SnapshotItem?
     private(set) var archiveFileURL: URL?
@@ -437,6 +451,12 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
             downloadStore?.failManualDownload(id: itemID, message: "タブが閉じられました")
         }
         blobTransfers.removeAll()
+        for (_, itemID) in playlistBlobItems {
+            playlistStore?.failBlobItem(itemID: itemID, message: "タブが閉じられました")
+        }
+        playlistBlobItems.removeAll()
+        playlistBlobContext.removeAll()
+        pendingBlobSave = nil
     }
 
     /// Collects the page's media right now: every <video>'s resolved
@@ -487,16 +507,23 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         }
     }
 
-    /// A long-press on a video ALWAYS ends in visible feedback:
-    /// a saveable http(s) URL opens the add confirmation; a blob:
-    /// URL (MSE playback — a page-session handle, not a file) and
-    /// an unresolvable press get an explicit notice instead of
-    /// silence. Nothing is ever added silently or dropped silently.
-    private func handleVideoLongPress(url: String, title: String) {
+    /// A long-press on a video ALWAYS ends in visible feedback.
+    /// http(s) URLs open the add confirmation directly. A blob:
+    /// URL is classified first (v0.4.14, RESEARCH_blob_playlist.md
+    /// §2): a fetch probe in the frame that generated it separates
+    /// plain Blobs (A — a real file, saveable through the bridge)
+    /// from MediaSource handles (B — no bytes behind the URL; the
+    /// real stream URL is looked up in the frame's Resource
+    /// Timing instead). Every dead end lands in mediaNotice with
+    /// its specific reason — the old blanket "保存できません
+    /// （blob:）" was factually wrong for plain Blobs and is gone.
+    private func handleVideoLongPress(url: String, title: String,
+                                      frame: WKFrameInfo?, streams: [String]) {
         guard !isPrivate, !showsStartPage, archiveSnapshot == nil else { return }
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.lowercased().hasPrefix("blob:") {
-            mediaNotice = "この動画は保存できません（blob:）"
+            resolveBlob(url: trimmed, frame: frame, streams: streams,
+                        fromPicker: false)
             return
         }
         let media = DetectedMedia(url: trimmed)
@@ -505,6 +532,272 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
             return
         }
         pendingLongPress = media
+    }
+
+    /// Picker entry point for a blob: row (v0.4.14): the picker
+    /// collects from the main frame only, so classification runs
+    /// there and the stream candidates are read from the main
+    /// frame's Resource Timing at tap time.
+    func resolveBlobFromPicker(_ media: DetectedMedia) {
+        guard !isPrivate, !showsStartPage, archiveSnapshot == nil else { return }
+        Task { @MainActor in
+            let streams = await collectStreamCandidates()
+            resolveBlob(url: media.url, frame: nil, streams: streams,
+                        fromPicker: true)
+        }
+    }
+
+    /// The blob classifier + resolver shared by the long-press and
+    /// picker paths. `streams` are the generating frame's
+    /// Resource-Timing media URLs (manifests first-class).
+    private func resolveBlob(url: String, frame: WKFrameInfo?,
+                             streams: [String], fromPicker: Bool) {
+        Task { @MainActor in
+            if let info = await classifyBlob(url: url, frame: frame),
+               info.ok, info.size > 0 {
+                // A: a plain Blob — a real file behind the URL.
+                if fromPicker {
+                    startBlobSaveToPlaylist(url: url, frame: frame,
+                                            title: pageTitle)
+                    tabNotice = "Playlistへ保存を開始しました"
+                } else {
+                    pendingBlobSave = (url: url, frame: frame, title: pageTitle)
+                    pendingLongPress = DetectedMedia(url: url)
+                }
+                return
+            }
+            // B: MediaSource — the URL itself holds no bytes. Find
+            // the real stream the player actually fetched.
+            let manifests = streams.filter { streamExtension($0) == "m3u8" }
+            if manifests.count == 1 {
+                offerStream(manifests[0], fromPicker: fromPicker)
+            } else if manifests.count > 1 {
+                mediaNotice = "この動画のストリーム候補が複数あります。保存バッジのリストから選んでください"
+            } else if let dash = streams.first(where: { streamExtension($0) == "mpd" }) {
+                _ = dash
+                mediaNotice = "この動画形式（DASH）は保存に未対応です"
+            } else if let progressive = streams.first(where: {
+                ["mp4", "mov", "m4v", "webm"].contains(streamExtension($0))
+            }) {
+                offerStream(progressive, fromPicker: fromPicker)
+            } else {
+                mediaNotice = "この動画は保存できませんでした（実URLを検出できません）"
+            }
+        }
+    }
+
+    /// A stream URL discovered behind an MSE blob: from a long
+    /// press it goes through the usual add confirmation; from the
+    /// picker (where the user already chose the item) it is added
+    /// directly.
+    private func offerStream(_ streamURL: String, fromPicker: Bool) {
+        let media = DetectedMedia(url: streamURL)
+        if fromPicker {
+            if playlistStore?.add(title: pageTitle, url: streamURL,
+                                  pageURL: currentURLString) == true {
+                tabNotice = media.isM3U8
+                    ? "Playlistに追加しました（HLSで保存します）"
+                    : "Playlistに追加しました"
+            } else {
+                tabNotice = "すでにPlaylistにあります"
+            }
+        } else {
+            pendingLongPress = media
+        }
+    }
+
+    private func streamExtension(_ urlString: String) -> String {
+        URL(string: urlString)?.pathExtension.lowercased() ?? ""
+    }
+
+    /// The discriminator (research §2.2): fetch the blob URL in
+    /// the frame that generated it. Success with size > 0 means a
+    /// plain Blob; a MediaSource URL has no bytes, so the fetch
+    /// fails. Runs as an async JS function via callAsyncJavaScript
+    /// (evaluateJavaScript would not await the promise).
+    private func classifyBlob(url: String, frame: WKFrameInfo?) async
+        -> (ok: Bool, size: Int64, type: String)? {
+        let body = """
+            try {
+              const response = await fetch(blobURL);
+              const blob = await response.blob();
+              return JSON.stringify({ ok: true, size: blob.size,
+                                      type: blob.type || '' });
+            } catch (e) {
+              return JSON.stringify({ ok: false, size: 0, type: '' });
+            }
+            """
+        guard let raw = try? await webView.callAsyncJavaScript(
+                body, arguments: ["blobURL": url], inFrame: frame,
+                in: .default),
+              let json = raw as? String,
+              let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else { return nil }
+        return (ok: dict["ok"] as? Bool ?? false,
+                size: (dict["size"] as? NSNumber)?.int64Value ?? 0,
+                type: dict["type"] as? String ?? "")
+    }
+
+    /// This frame's Resource-Timing media URLs (main frame), read
+    /// on demand for the picker path: manifests plus progressive
+    /// files the player fetched.
+    private func collectStreamCandidates() async -> [String] {
+        let script = #"""
+            (function () {
+              var out = [];
+              var seen = {};
+              try {
+                var entries = performance.getEntriesByType('resource') || [];
+                for (var i = 0; i < entries.length; i++) {
+                  var name = entries[i].name || '';
+                  if (/\.(m3u8|mpd|mp4|mov|m4v|webm)(\?|#|$)/i.test(name)
+                      && !seen[name]) {
+                    seen[name] = 1;
+                    out.push(name);
+                  }
+                }
+              } catch (e) {}
+              return JSON.stringify(out);
+            })()
+            """#
+        guard let raw = try? await webView.evaluateJavaScript(script),
+              let json = raw as? String,
+              let data = json.data(using: .utf8),
+              let urls = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return urls
+    }
+
+    /// Starts a plain-Blob → Playlist transfer: the probe script
+    /// in the generating frame fetches the blob and streams it
+    /// back in chunks (plstart / plchunk / plend messages). No
+    /// size cap — the user's standing call is unlimited, and the
+    /// staging file keeps memory flat.
+    func startBlobSaveToPlaylist(url: String, frame: WKFrameInfo?, title: String) {
+        guard playlistStore != nil else { return }
+        let transfer = UUID().uuidString
+        playlistBlobContext[transfer] = (title: title, pageURL: currentURLString)
+        let js = "window.__sbSaveBlobToPlaylist && "
+            + "window.__sbSaveBlobToPlaylist(\(Self.jsStringLiteral(url)), "
+            + "\(Self.jsStringLiteral(transfer)))"
+        webView.evaluateJavaScript(js, inFrame: frame, in: .default) { [weak self] result in
+            if case .failure = result {
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.playlistBlobContext[transfer] = nil
+                    self.mediaNotice = "この動画は保存できませんでした（ページが変わっています）"
+                }
+            }
+        }
+    }
+
+    /// ContentView's add confirmation for a classified plain Blob:
+    /// the pending context was captured at long-press time.
+    func confirmPendingBlobSave() {
+        guard let pending = pendingBlobSave else { return }
+        pendingBlobSave = nil
+        startBlobSaveToPlaylist(url: pending.url, frame: pending.frame,
+                                title: pending.title)
+        tabNotice = "Playlistへ保存を開始しました"
+    }
+
+    /// Native end of the blob→Playlist stream (probe script,
+    /// snapMedia messages plstart / plchunk / plend / plerror).
+    func handlePlaylistBlobMessage(_ body: [String: Any]) {
+        guard let store = playlistStore,
+              let transfer = body["transfer"] as? String else { return }
+        switch body["type"] as? String ?? "" {
+        case "plstart":
+            guard let context = playlistBlobContext[transfer] else { return }
+            let mime = body["mime"] as? String ?? ""
+            let size = (body["size"] as? NSNumber)?.int64Value
+            let fileName = "video" + Self.fileExtension(forMime: mime)
+            let itemID = store.beginBlobItem(title: context.title,
+                                             url: body["url"] as? String ?? "",
+                                             pageURL: context.pageURL,
+                                             fileName: fileName,
+                                             expectedBytes: size)
+            playlistBlobItems[transfer] = itemID
+        case "plchunk":
+            guard let itemID = playlistBlobItems[transfer],
+                  let base64 = body["data"] as? String,
+                  let data = Data(base64Encoded: base64) else { return }
+            store.appendBlobChunk(itemID: itemID, data: data)
+        case "plend":
+            guard let itemID = playlistBlobItems.removeValue(forKey: transfer)
+            else { return }
+            playlistBlobContext[transfer] = nil
+            store.finishBlobItem(itemID: itemID)
+            tabNotice = "Playlistに保存しました"
+        case "plerror":
+            playlistBlobContext[transfer] = nil
+            if let itemID = playlistBlobItems.removeValue(forKey: transfer) {
+                store.failBlobItem(itemID: itemID,
+                                   message: "ページからの読み取りに失敗しました")
+            } else {
+                mediaNotice = "この動画は保存できませんでした（読み取りに失敗）"
+            }
+        default:
+            break
+        }
+    }
+
+    /// File extension for a blob's MIME type (the saved file's
+    /// name is the item id plus this extension).
+    static func fileExtension(forMime mime: String) -> String {
+        switch mime.lowercased() {
+        case "video/mp4": return ".mp4"
+        case "video/quicktime": return ".mov"
+        case "video/webm": return ".webm"
+        case "video/x-m4v", "video/m4v": return ".m4v"
+        case "audio/mpeg": return ".mp3"
+        case "audio/mp4", "audio/x-m4a": return ".m4a"
+        case "application/pdf": return ".pdf"
+        case "image/png": return ".png"
+        case "image/jpeg": return ".jpg"
+        default: return ".mp4"
+        }
+    }
+
+    /// A JS string literal for `value` (JSON encoding is a valid
+    /// JS string literal for this use).
+    static func jsStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+              let text = String(data: data, encoding: .utf8) else { return """" }
+        return String(text.dropFirst().dropLast())
+    }
+
+    /// Headers for native media downloads (v0.4.14): this tab's
+    /// cookies filtered to the target host (the SelfContainedHTML
+    /// pattern) plus the WebView's user agent. PlaylistStore adds
+    /// the Referer itself.
+    func downloadHeaders(for url: URL) async -> [String: String] {
+        let store = webView.configuration.websiteDataStore.httpCookieStore
+        let cookies: [HTTPCookie] = await withCheckedContinuation { continuation in
+            store.getAllCookies { continuation.resume(returning: $0) }
+        }
+        var headers: [String: String] = [:]
+        if let host = url.host {
+            let matching = cookies.filter { cookie in
+                let domain = cookie.domain.hasPrefix(".")
+                    ? String(cookie.domain.dropFirst()) : cookie.domain
+                return host == domain || host.hasSuffix("." + domain)
+            }
+            if !matching.isEmpty,
+               let header = HTTPCookie.requestHeaderFields(with: matching)["Cookie"] {
+                headers["Cookie"] = header
+            }
+        }
+        var userAgent = webView.customUserAgent
+        if userAgent == nil,
+           let value = try? await webView.evaluateJavaScript("navigator.userAgent") {
+            userAgent = value as? String
+        }
+        if let userAgent, !userAgent.isEmpty {
+            headers["User-Agent"] = userAgent
+        }
+        return headers
     }
 
     /// blob: download bridge (v0.4.10). WKWebView cannot download
@@ -607,6 +900,17 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         var href = links[k].getAttribute('href') || '';
         if (/\.(mp4|mov|m4v|webm)([?#]|$)/i.test(href)) push(href);
       }
+      // Stream manifests the page's player fetched (v0.4.14):
+      // behind an MSE blob:, the .m3u8 in the Resource Timing
+      // ledger is the saveable URL. Names survive cross-origin
+      // (only sizes/timings are zeroed without TAO).
+      try {
+        var entries = performance.getEntriesByType('resource') || [];
+        for (var m = 0; m < entries.length; m++) {
+          var name = entries[m].name || '';
+          if (/\.(m3u8|mpd)([?#]|$)/i.test(name)) push(name);
+        }
+      } catch (e) {}
       return JSON.stringify(out);
     })()
     """#
@@ -632,6 +936,84 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
           window.webkit.messageHandlers.snapMedia.postMessage(message);
         } catch (e) {}
       }
+      // Resource Timing collection (v0.4.14): manifests the
+      // player fetches are the real URLs behind MSE blob:
+      // playback. The buffer is widened up front and a
+      // PerformanceObserver keeps its own list, so entries are
+      // not lost when the page overflows the default buffer.
+      window.__sbStreams = [];
+      try { performance.setResourceTimingBufferSize(1000); } catch (e) {}
+      function noteStream(name) {
+        if (!name) return;
+        if (!/\.(m3u8|mpd)([?#]|$)/i.test(name)) return;
+        if (window.__sbStreams.indexOf(name) >= 0) return;
+        if (window.__sbStreams.length < 100) window.__sbStreams.push(name);
+      }
+      if (window.PerformanceObserver) {
+        try {
+          new PerformanceObserver(function (list) {
+            var entries = list.getEntries();
+            for (var i = 0; i < entries.length; i++) {
+              noteStream(entries[i].name || '');
+            }
+          }).observe({ entryTypes: ['resource'] });
+        } catch (e) {}
+      }
+      function streamCandidates() {
+        var out = [];
+        var seen = {};
+        function add(u) {
+          if (u && !seen[u]) { seen[u] = 1; out.push(u); }
+        }
+        for (var i = 0; i < window.__sbStreams.length; i++) {
+          add(window.__sbStreams[i]);
+        }
+        try {
+          var entries = performance.getEntriesByType('resource') || [];
+          for (var j = 0; j < entries.length; j++) {
+            var n = entries[j].name || '';
+            if (/\.(m3u8|mpd|mp4|mov|m4v|webm)([?#]|$)/i.test(n)) add(n);
+          }
+        } catch (e) {}
+        return out;
+      }
+      // Plain-Blob -> Playlist transfer (v0.4.14): native asks
+      // this frame to stream one of ITS blob URLs back in 512KB
+      // base64 chunks — the blob only exists in the document
+      // that created it, so the fetch must happen here. No size
+      // cap (the user's standing call is unlimited); chunks go
+      // to a staging file on the native side, memory stays flat.
+      window.__sbSaveBlobToPlaylist = function (url, transfer) {
+        fetch(url).then(function (r) { return r.blob(); }).then(function (blob) {
+          post({ type: 'plstart', transfer: transfer, url: url,
+                 size: blob.size, mime: blob.type || '' });
+          var CHUNK = 512 * 1024;
+          var offset = 0;
+          function step() {
+            if (offset >= blob.size) {
+              post({ type: 'plend', transfer: transfer });
+              return;
+            }
+            var slice = blob.slice(offset, offset + CHUNK);
+            var reader = new FileReader();
+            reader.onload = function () {
+              var result = String(reader.result || '');
+              var comma = result.indexOf(',');
+              post({ type: 'plchunk', transfer: transfer,
+                     data: comma >= 0 ? result.slice(comma + 1) : '' });
+              offset += slice.size;
+              step();
+            };
+            reader.onerror = function () {
+              post({ type: 'plerror', transfer: transfer });
+            };
+            reader.readAsDataURL(slice);
+          }
+          step();
+        }).catch(function () {
+          post({ type: 'plerror', transfer: transfer });
+        });
+      };
       function videoURL(v) {
         if (v.currentSrc) return v.currentSrc;
         var attr = v.getAttribute('src');
@@ -685,7 +1067,8 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
           if (!target) return;
           post({ type: 'longpress',
                  url: videoURL(target) || '',
-                 title: document.title || '' });
+                 title: document.title || '',
+                 streams: streamCandidates() });
           target = null;
         }, 450);
       }, { passive: true, capture: true });
@@ -1716,8 +2099,15 @@ extension BrowserTab: WKScriptMessageHandler {
         switch type {
         case "longpress":
             let url = body["url"] as? String ?? ""
+            let streams = body["streams"] as? [String] ?? []
+            let frame = message.frameInfo
             Task { @MainActor in
-                self.handleVideoLongPress(url: url, title: self.pageTitle)
+                self.handleVideoLongPress(url: url, title: self.pageTitle,
+                                          frame: frame, streams: streams)
+            }
+        case "plstart", "plchunk", "plend", "plerror":
+            Task { @MainActor in
+                self.handlePlaylistBlobMessage(body)
             }
         case "changed":
             Task { @MainActor in
