@@ -59,6 +59,14 @@ final class BrowserModel: ObservableObject {
     /// (v0.4.10); ContentView turns each into a toast.
     @Published var downloadNotice: String?
 
+    /// Window-opening failures (tear-off / split view, v0.4.13),
+    /// set by TabWindows when a requested window verifiably did
+    /// not appear; BrowserTabView turns each into a toast, like
+    /// downloadNotice. Before v0.4.13 a failed window request
+    /// failed silently — the user tapped 分割 and nothing at all
+    /// happened, with the error swallowed by an API handler.
+    @Published var windowNotice: String?
+
     init() {
         downloads.onNotice = { [weak self] text in
             self?.downloadNotice = text
