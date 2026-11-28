@@ -1465,6 +1465,15 @@ private struct BrowserTabView: View {
             "自己完結HTML: \(fmt(result.fullHTMLBytes))" + (result.assetsInlined.map { " (リソース \($0) 件を取り込み)" } ?? ""),
             "テキスト: \(result.textChars.map { "\($0)文字" } ?? "失敗")"
         ]
+        // Bundled media (v0.4.13 phase 2b): stated whenever the
+        // page had direct-file media — a shortfall is visible
+        // here, never a silent omission.
+        if let media = result.mediaBundled {
+            lines.insert("動画・音声: \(media) 件を同梱（アーカイブ内で再生可能）", at: 4)
+        }
+        if result.assetsCapped {
+            lines.append("※ リソース上限に到達（一部は元URL参照のまま）")
+        }
         if !result.failures.isEmpty {
             lines.append("—")
             lines.append(contentsOf: result.failures)

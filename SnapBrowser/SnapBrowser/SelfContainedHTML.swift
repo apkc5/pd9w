@@ -8,10 +8,15 @@ import WebKit
 ///  2. Native code fetches each tokenised resource (with the web view's
 ///     cookies) and swaps the token for a data URI — or, for CSS, for the
 ///     fetched stylesheet text with its own url()/@import resolved.
-/// Caps: 5 MB per resource (3 MB for CSS), 40 MB total, 800 resources
-/// (raised in v0.4.13 from 3/2 MB, 25 MB, 500). Anything that fails falls
-/// back to the original URL (needs network) or, for stylesheets, to
-/// nothing — the rest of the page still renders offline.
+/// Caps (v0.4.13, user-directed "no size limits"): the only ceiling
+/// left is the technical one of the single-file format — 120 MB of
+/// raw resources (≈160 MB of base64 HTML), 20 MB per resource
+/// (10 MB for CSS), 2,000 resources; hitting it is reported in the
+/// completion message, not silent. Anything that fails falls back
+/// to the original URL (needs network) or, for stylesheets, to
+/// nothing — the rest of the page still renders offline. Direct
+/// media files are NOT in this budget at all: they are downloaded
+/// uncapped as separate files next to full.html (phase 2b).
 /// v0.4.13 capture widening: srcset candidates (the browser's pick via
 /// currentSrc, else the largest candidate), style-attribute url()s
 /// (backgrounds), video posters, and @font-face fonts (which ride the
@@ -26,12 +31,37 @@ enum SelfContainedHTML {
         var data: Data
         var inlined: Int
         var total: Int
+        /// Bundled direct-file media (phase 2b), downloaded to
+        /// temp files for the caller to move into the snapshot
+        /// folder. mediaAttempted counts every candidate the
+        /// freeze found; media.count is how many actually landed.
+        var media: [BundledMedia]
+        var mediaAttempted: Int
+        /// True when the resource byte budget stopped the fetch
+        /// early — surfaced in the completion message, never
+        /// silent (the remaining resources keep their live URLs).
+        var assetsCapped: Bool
     }
 
     struct Resource {
         var token: String
         var url: String
         var kind: String // "img" | "css" | "other"
+    }
+
+    /// One direct-file media candidate collected by the freeze.
+    struct MediaRef {
+        var file: String // relative name inside the snapshot folder
+        var url: String
+        var kind: String // "video" | "audio"
+    }
+
+    /// A media file that was successfully downloaded to a temp
+    /// location, ready to be moved into the snapshot folder.
+    struct BundledMedia {
+        var fileName: String
+        var tempFile: URL
+        var sourceURL: String
     }
 
     enum BuildError: Error {
@@ -65,7 +95,7 @@ enum SelfContainedHTML {
         return best;
       }
       function tokenFor(url, kind) {
-        if (resources.length >= 800) { return url; }
+        if (resources.length >= 2000) { return url; }
         var t = 'snapres://k' + (resources.length + 1) + '.';
         resources.push({ token: t, url: url, kind: kind });
         return t;
@@ -85,11 +115,14 @@ enum SelfContainedHTML {
       }
       var root = document.documentElement.cloneNode(true);
       var head = root.querySelector('head');
-      if (head && !root.querySelector('base')) {
-        var b = document.createElement('base');
-        b.setAttribute('href', document.baseURI);
-        head.insertBefore(b, head.firstChild);
-      }
+      // No <base> is inserted (v0.4.13 phase 2b): bundled media
+      // files are referenced by RELATIVE name and must resolve
+      // against the snapshot folder the archive is opened from,
+      // which a base pointing at the live page would break.
+      // Everything that used to rely on the base — anchor hrefs,
+      // leftover media srcs — is absolutised explicitly below
+      // instead. (A page's OWN <base> is left untouched; media
+      // bundling is skipped for such pages, see the media pass.)
       if (head && !root.querySelector('meta[charset]')) {
         var mc = document.createElement('meta');
         mc.setAttribute('charset', 'utf-8');
@@ -147,13 +180,64 @@ enum SelfContainedHTML {
         }
       }
       // Video posters are still images — capture them like images.
-      // (The video itself stays a live reference, as before.)
       var vids = root.querySelectorAll('video');
       for (var w = 0; w < vids.length; w++) {
         var poster = vids[w].getAttribute('poster');
         if (poster && poster.indexOf('data:') !== 0) {
           var pa = abs(poster);
           if (pa) { vids[w].setAttribute('poster', tokenFor(pa, 'img')); }
+        }
+      }
+      // Direct-file media bundling (v0.4.13 phase 2b): a <video> /
+      // <audio> whose currentSrc is a plain http(s) media FILE
+      // (not HLS, not blob/MSE, not DRM) is downloaded natively
+      // and stored next to full.html; the clone's src is rewritten
+      // to the relative file name so the archived copy PLAYS
+      // offline. Native code reports any file it could not fetch
+      // back, and build() rewrites those srcs to the original URL
+      // (streaming fallback; the poster above remains either way).
+      // Skipped when the page carries its own <base>: relative
+      // names would resolve against it instead of the folder.
+      var media = [];
+      var mediaExts = ['mp4','m4v','mov','webm','mp3','m4a','aac','wav','flac','ogg','opus'];
+      if (!document.querySelector('base')) {
+        var liveMedia = document.querySelectorAll('video, audio');
+        var cloneMedia = root.querySelectorAll('video, audio');
+        for (var z = 0; z < cloneMedia.length && z < liveMedia.length; z++) {
+          var lm = liveMedia[z];
+          var cm = cloneMedia[z];
+          var msrc = lm.currentSrc || '';
+          if (!msrc || (msrc.indexOf('http://') !== 0 && msrc.indexOf('https://') !== 0)) { continue; }
+          if (msrc.toLowerCase().indexOf('.m3u8') >= 0) { continue; }
+          var ext = '';
+          try {
+            var pth = new URL(msrc).pathname;
+            var dot = pth.lastIndexOf('.');
+            if (dot >= 0) { ext = pth.slice(dot + 1).toLowerCase(); }
+          } catch (e) { ext = ''; }
+          if (mediaExts.indexOf(ext) < 0) { continue; }
+          var fname = 'snapmedia-' + (media.length + 1) + '.' + ext;
+          media.push({ file: fname, url: msrc, kind: lm.tagName.toLowerCase() });
+          cm.setAttribute('src', fname);
+          // The bundled file IS the one the browser picked
+          // (currentSrc); leftover <source> children would take
+          // precedence over the src attribute, so they go.
+          var msrcs = cm.querySelectorAll('source');
+          for (var s3 = 0; s3 < msrcs.length; s3++) { msrcs[s3].remove(); }
+          if (!cm.hasAttribute('controls')) { cm.setAttribute('controls', ''); }
+          cm.setAttribute('preload', 'metadata');
+        }
+      }
+      // Media that was NOT bundled keeps a live reference — make
+      // it absolute, since no <base> is inserted anymore.
+      var leftoverMedia = root.querySelectorAll('video, audio, source');
+      for (var l2 = 0; l2 < leftoverMedia.length; l2++) {
+        var lsrc = leftoverMedia[l2].getAttribute('src');
+        if (lsrc && lsrc.indexOf('snapmedia-') !== 0 && lsrc.indexOf('data:') !== 0
+            && lsrc.indexOf('http://') !== 0 && lsrc.indexOf('https://') !== 0
+            && lsrc.indexOf('blob:') !== 0) {
+          var la = abs(lsrc);
+          if (la) { leftoverMedia[l2].setAttribute('src', la); }
         }
       }
       var kill = root.querySelectorAll('script, noscript, object, embed, form');
@@ -173,7 +257,19 @@ enum SelfContainedHTML {
         }
         if (all[r2].tagName === 'A') {
           var h = all[r2].getAttribute('href');
-          if (h && h.toLowerCase().indexOf('javascript:') === 0) { all[r2].setAttribute('href', '#'); }
+          if (h) {
+            if (h.toLowerCase().indexOf('javascript:') === 0) {
+              all[r2].setAttribute('href', '#');
+            } else if (h.charAt(0) !== '#') {
+              // Absolutise so archive links still navigate to the
+              // live site now that no <base> is inserted (in-page
+              // '#…' anchors are left alone — they scroll, not
+              // navigate). mailto:/tel:/data: pass through abs()
+              // unchanged.
+              var ah = abs(h);
+              if (ah) { all[r2].setAttribute('href', ah); }
+            }
+          }
         }
       }
       var html = '<!DOCTYPE html>\\n' + root.outerHTML;
@@ -185,7 +281,7 @@ enum SelfContainedHTML {
       }
       window.__snapB64 = btoa(bin);
       window.__snapHTML = null;
-      return JSON.stringify(resources);
+      return JSON.stringify({ resources: resources, media: media });
     })()
     """
 
@@ -232,7 +328,7 @@ enum SelfContainedHTML {
         // webarchive benefit too — build() does not scroll again.
         let raw = try await webView.evaluateJavaScript(freezeJS)
         guard let json = raw as? String else { throw BuildError.freezeFailed }
-        let resources = parseResources(json)
+        let (resources, mediaRefs) = parseFreezeResult(json)
 
         // Pull the base64 body in chunks (multiple of 4 keeps quartets whole).
         let lenRaw = try await webView.evaluateJavaScript("window.__snapB64 ? window.__snapB64.length : 0")
@@ -268,19 +364,49 @@ enum SelfContainedHTML {
                 html = html.replacingOccurrences(of: resource.token, with: fallback)
             }
         }
-        return Result(data: Data(html.utf8), inlined: inlined, total: resources.count)
+
+        // Bundled media (phase 2b): download each direct-file
+        // candidate — UNCAPPED, per the user's explicit call —
+        // sequentially to temp files (streamed to disk, never held
+        // in memory). A candidate that fails is rewritten in the
+        // HTML from its relative file name back to the original
+        // URL, so it can still stream when online and shows its
+        // (inlined) poster when not. The counts ride along in the
+        // Result so the completion message can state them.
+        var bundled: [BundledMedia] = []
+        for ref in mediaRefs {
+            guard let url = URL(string: ref.url),
+                  let temp = await fetcher.downloadMedia(url: url) else {
+                html = html.replacingOccurrences(of: ref.file, with: ref.url)
+                continue
+            }
+            bundled.append(BundledMedia(fileName: ref.file,
+                                        tempFile: temp,
+                                        sourceURL: ref.url))
+        }
+        return Result(data: Data(html.utf8), inlined: inlined,
+                      total: resources.count,
+                      media: bundled, mediaAttempted: mediaRefs.count,
+                      assetsCapped: fetcher.hitLimit)
     }
 
-    private static func parseResources(_ json: String) -> [Resource] {
+    private static func parseFreezeResult(_ json: String) -> ([Resource], [MediaRef]) {
         guard let data = json.data(using: .utf8),
-              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        else { return [] }
-        return array.compactMap { entry in
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return ([], []) }
+        let resources = (object["resources"] as? [[String: Any]] ?? []).compactMap { entry in
             guard let token = entry["token"] as? String,
                   let url = entry["url"] as? String,
                   let kind = entry["kind"] as? String else { return nil }
             return Resource(token: token, url: url, kind: kind)
         }
+        let media = (object["media"] as? [[String: Any]] ?? []).compactMap { entry in
+            guard let file = entry["file"] as? String,
+                  let url = entry["url"] as? String,
+                  let kind = entry["kind"] as? String else { return nil }
+            return MediaRef(file: file, url: url, kind: kind)
+        }
+        return (resources, media)
     }
 
     private static func allCookies(from webView: WKWebView) async -> [HTTPCookie] {
@@ -304,11 +430,26 @@ enum SelfContainedHTML {
 private final class ResourceFetcher {
     private let cookies: [HTTPCookie]
     private let session: URLSession
+    /// Separate session for bundled-media downloads: the regular
+    /// session's 30 s resource timeout would kill any large video.
+    private let mediaSession: URLSession
     private var usedBytes = 0
+    /// Set when the byte budget stopped fetching early; reported
+    /// to the user in the completion message (never silent).
+    private(set) var hitLimit = false
 
-    private static let totalLimit = 40_000_000
-    private static let perItemLimit = 5_000_000
-    private static let perCSSLimit = 3_000_000
+    // The user's call was "no size limits" — what remains is only
+    // the TECHNICAL ceiling of the format: the archive is ONE
+    // HTML string held in memory (base64 inflates bytes by ~4/3,
+    // and the string is copied again on decode and on render).
+    // 120 MB of raw resources ≈ 160 MB of HTML is about the most
+    // a single file can carry before the viewer itself becomes
+    // the failure point. Bundled media files are NOT under this
+    // budget at all — they live as separate files (see
+    // downloadMedia).
+    private static let totalLimit = 120_000_000
+    private static let perItemLimit = 20_000_000
+    private static let perCSSLimit = 10_000_000
 
     init(cookies: [HTTPCookie]) {
         self.cookies = cookies
@@ -316,6 +457,10 @@ private final class ResourceFetcher {
         config.timeoutIntervalForRequest = 20
         config.timeoutIntervalForResource = 30
         self.session = URLSession(configuration: config)
+        let mediaConfig = URLSessionConfiguration.default
+        mediaConfig.timeoutIntervalForRequest = 60
+        mediaConfig.timeoutIntervalForResource = 3_600
+        self.mediaSession = URLSession(configuration: mediaConfig)
     }
 
     func fetchAll(_ resources: [SelfContainedHTML.Resource]) async -> [String: String] {
@@ -323,7 +468,10 @@ private final class ResourceFetcher {
         var index = 0
         let batchSize = 6
         while index < resources.count {
-            if usedBytes >= Self.totalLimit { break }
+            if usedBytes >= Self.totalLimit {
+                hitLimit = true
+                break
+            }
             let batch = Array(resources[index..<min(index + batchSize, resources.count)])
             index += batch.count
             let results: [(String, String, Int)] = await withTaskGroup(
@@ -357,6 +505,46 @@ private final class ResourceFetcher {
             }
         }
         return replacements
+    }
+
+    /// Downloads one bundled-media file (snapshot video/audio,
+    /// phase 2b) to a temp file — deliberately UNCAPPED (the
+    /// user's explicit call: no size limits on bundled media) and
+    /// streamed to disk by the download task, never held in
+    /// memory. The caller moves the returned file into the
+    /// snapshot folder. Returns nil on any failure — HTTP error,
+    /// non-media MIME, empty file — and the caller falls back to
+    /// the live URL / poster and reports the shortfall.
+    func downloadMedia(url: URL) async -> URL? {
+        do {
+            let (downloaded, response) = try await mediaSession.download(for: makeRequest(url: url))
+            if let http = response as? HTTPURLResponse,
+               !(200..<300).contains(http.statusCode) {
+                try? FileManager.default.removeItem(at: downloaded)
+                return nil
+            }
+            let mime = response.mimeType ?? ""
+            guard mime.hasPrefix("video/") || mime.hasPrefix("audio/") else {
+                try? FileManager.default.removeItem(at: downloaded)
+                return nil
+            }
+            let size = (try? FileManager.default
+                .attributesOfItem(atPath: downloaded.path)[.size] as? Int) ?? nil
+            guard let size, size > 0 else {
+                try? FileManager.default.removeItem(at: downloaded)
+                return nil
+            }
+            // The async download's temp file is only guaranteed
+            // until this call returns — move it to our own name
+            // before handing it out.
+            let ext = url.pathExtension.isEmpty ? "bin" : url.pathExtension
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent("snapmedia-\(UUID().uuidString).\(ext)")
+            try FileManager.default.moveItem(at: downloaded, to: dest)
+            return dest
+        } catch {
+            return nil
+        }
     }
 
     // MARK: Fetch primitives
