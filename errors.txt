@@ -1,4 +1,4 @@
-DiagTypecheck run 38 target ios17.0
+DiagTypecheck run 43 target ios17.0
 swift-driver version: 1.127.15 <unknown>:0: warning: using sysroot for 'iPhoneOS' but targeting 'MacOSX'
 Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)
 Target: arm64-apple-macosx15.0
@@ -32,13 +32,13 @@ Theme.swift
 WalkingPet.swift
 WebView.swift
 ZipWriter.swift
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:975:27: warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
- 973 |     nonisolated func webView(_ webView: WKWebView,
- 974 |                              didStartProvisionalNavigation navigation: WKNavigation!) {
- 975 |         let url = webView.url
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1060:27: warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
+1058 |     nonisolated func webView(_ webView: WKWebView,
+1059 |                              didStartProvisionalNavigation navigation: WKNavigation!) {
+1060 |         let url = webView.url
      |                           `- warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
- 976 |         Task { @MainActor in
- 977 |             guard let url else { return }
+1061 |         Task { @MainActor in
+1062 |             guard let url else { return }
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:172:56: note: property declared here
 170 |  property.
@@ -48,13 +48,13 @@ ZipWriter.swift
 173 | 
 174 | /*! @abstract A Boolean value indicating whether the view is currently
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1008:27: warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
-1006 |     nonisolated func webView(_ webView: WKWebView,
-1007 |                              didFinish navigation: WKNavigation!) {
-1008 |         let url = webView.url
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1093:27: warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
+1091 |     nonisolated func webView(_ webView: WKWebView,
+1092 |                              didFinish navigation: WKNavigation!) {
+1093 |         let url = webView.url
      |                           `- warning: main actor-isolated property 'url' can not be referenced from a nonisolated context
-1009 |         let title = webView.title
-1010 |         Task { @MainActor in
+1094 |         let title = webView.title
+1095 |         Task { @MainActor in
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:172:56: note: property declared here
 170 |  property.
@@ -64,13 +64,13 @@ ZipWriter.swift
 173 | 
 174 | /*! @abstract A Boolean value indicating whether the view is currently
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1009:29: warning: main actor-isolated property 'title' can not be referenced from a nonisolated context
-1007 |                              didFinish navigation: WKNavigation!) {
-1008 |         let url = webView.url
-1009 |         let title = webView.title
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1094:29: warning: main actor-isolated property 'title' can not be referenced from a nonisolated context
+1092 |                              didFinish navigation: WKNavigation!) {
+1093 |         let url = webView.url
+1094 |         let title = webView.title
      |                             `- warning: main actor-isolated property 'title' can not be referenced from a nonisolated context
-1010 |         Task { @MainActor in
-1011 |             self.loadError = nil
+1095 |         Task { @MainActor in
+1096 |             self.loadError = nil
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:164:59: note: property declared here
 162 |  for this property.
@@ -80,13 +80,13 @@ ZipWriter.swift
 165 | 
 166 | /*! @abstract The active URL.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1052:42: warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
-1050 |                              decidePolicyFor navigationAction: WKNavigationAction,
-1051 |                              decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-1052 |         guard let url = navigationAction.request.url else {
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1152:42: warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
+1150 |                              decidePolicyFor navigationAction: WKNavigationAction,
+1151 |                              decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+1152 |         guard let url = navigationAction.request.url else {
      |                                          `- warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
-1053 |             decisionHandler(.allow)
-1054 |             return
+1153 |             decisionHandler(.allow)
+1154 |             return
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationAction.h:78:53: note: property declared here
  76 | /*! @abstract The navigation's request. 
@@ -96,13 +96,13 @@ ZipWriter.swift
  79 | 
  80 | /*! @abstract A value indicating whether the web content used a download attribute to indicate that this should be downloaded.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1056:29: warning: main actor-isolated property 'shouldPerformDownload' can not be referenced from a nonisolated context
-1054 |             return
-1055 |         }
-1056 |         if navigationAction.shouldPerformDownload {
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1156:29: warning: main actor-isolated property 'shouldPerformDownload' can not be referenced from a nonisolated context
+1154 |             return
+1155 |         }
+1156 |         if navigationAction.shouldPerformDownload {
      |                             `- warning: main actor-isolated property 'shouldPerformDownload' can not be referenced from a nonisolated context
-1057 |             decisionHandler(.download)
-1058 |             return
+1157 |             decisionHandler(.download)
+1158 |             return
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationAction.h:82:38: note: property declared here
  80 | /*! @abstract A value indicating whether the web content used a download attribute to indicate that this should be downloaded.
@@ -112,13 +112,13 @@ ZipWriter.swift
  83 | 
  84 | /*! @abstract Whether or not the navigation is a redirect from a content rule list.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1084:32: warning: main actor-isolated property 'canShowMIMEType' can not be referenced from a nonisolated context
-1082 |                              decidePolicyFor navigationResponse: WKNavigationResponse,
-1083 |                              decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-1084 |         if !navigationResponse.canShowMIMEType {
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1184:32: warning: main actor-isolated property 'canShowMIMEType' can not be referenced from a nonisolated context
+1182 |                              decidePolicyFor navigationResponse: WKNavigationResponse,
+1183 |                              decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+1184 |         if !navigationResponse.canShowMIMEType {
      |                                `- warning: main actor-isolated property 'canShowMIMEType' can not be referenced from a nonisolated context
-1085 |             decisionHandler(.download)
-1086 |             return
+1185 |             decisionHandler(.download)
+1186 |             return
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:51:38: note: property declared here
 49 |  @discussion Allowing a navigation response with a MIME type that can't be shown will cause the navigation to fail.
@@ -128,13 +128,13 @@ ZipWriter.swift
 52 | 
 53 | @end
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1088:42: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1086 |             return
-1087 |         }
-1088 |         if let http = navigationResponse.response as? HTTPURLResponse,
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1188:42: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1186 |             return
+1187 |         }
+1188 |         if let http = navigationResponse.response as? HTTPURLResponse,
      |                                          `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1089 |            let disposition = http.value(forHTTPHeaderField: "Content-Disposition"),
-1090 |            disposition.lowercased().contains("attachment") {
+1189 |            let disposition = http.value(forHTTPHeaderField: "Content-Disposition"),
+1190 |            disposition.lowercased().contains("attachment") {
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
 44 | /*! @abstract The frame's response.
@@ -144,13 +144,13 @@ ZipWriter.swift
 47 | 
 48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1097:31: warning: main actor-isolated property 'isForMainFrame' can not be referenced from a nonisolated context
-1095 |         // shown, not downloaded — remember it so the ⋯ menu can offer
-1096 |         // 「このファイルをダウンロード」 for the displayed file.
-1097 |         if navigationResponse.isForMainFrame,
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1197:31: warning: main actor-isolated property 'isForMainFrame' can not be referenced from a nonisolated context
+1195 |         // shown, not downloaded — remember it so the ⋯ menu can offer
+1196 |         // 「このファイルをダウンロード」 for the displayed file.
+1197 |         if navigationResponse.isForMainFrame,
      |                               `- warning: main actor-isolated property 'isForMainFrame' can not be referenced from a nonisolated context
-1098 |            let url = navigationResponse.response.url,
-1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+1198 |            let url = navigationResponse.response.url,
+1199 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:42:61: note: property declared here
 40 | /*! @abstract A Boolean value indicating whether the frame being navigated is the main frame.
@@ -160,13 +160,13 @@ ZipWriter.swift
 43 | 
 44 | /*! @abstract The frame's response.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1098:41: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1096 |         // 「このファイルをダウンロード」 for the displayed file.
-1097 |         if navigationResponse.isForMainFrame,
-1098 |            let url = navigationResponse.response.url,
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1198:41: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1196 |         // 「このファイルをダウンロード」 for the displayed file.
+1197 |         if navigationResponse.isForMainFrame,
+1198 |            let url = navigationResponse.response.url,
      |                                         `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
-1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+1199 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+1200 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
 44 | /*! @abstract The frame's response.
@@ -176,13 +176,13 @@ ZipWriter.swift
 47 | 
 48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1099:73: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1097 |         if navigationResponse.isForMainFrame,
-1098 |            let url = navigationResponse.response.url,
-1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1199:73: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1197 |         if navigationResponse.isForMainFrame,
+1198 |            let url = navigationResponse.response.url,
+1199 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
      |                                                                         `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
-1101 |             Task { @MainActor in
+1200 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+1201 |             Task { @MainActor in
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
 44 | /*! @abstract The frame's response.
@@ -192,13 +192,13 @@ ZipWriter.swift
 47 | 
 48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1100:81: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1098 |            let url = navigationResponse.response.url,
-1099 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
-1100 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1200:81: warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
+1198 |            let url = navigationResponse.response.url,
+1199 |            Self.isInlineDocument(url: url, mimeType: navigationResponse.response.mimeType) {
+1200 |             let name = Self.documentName(url: url, mimeType: navigationResponse.response.mimeType)
      |                                                                                 `- warning: main actor-isolated property 'response' can not be referenced from a nonisolated context
-1101 |             Task { @MainActor in
-1102 |                 self.currentDocumentName = name
+1201 |             Task { @MainActor in
+1202 |                 self.currentDocumentName = name
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationResponse.h:46:54: note: property declared here
 44 | /*! @abstract The frame's response.
@@ -208,13 +208,13 @@ ZipWriter.swift
 47 | 
 48 | /*! @abstract A Boolean value indicating whether WebKit can display the response's MIME type natively.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1354:36: warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
-1352 |                              for navigationAction: WKNavigationAction,
-1353 |                              windowFeatures: WKWindowFeatures) -> WKWebView? {
-1354 |         let url = navigationAction.request.url
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1466:36: warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
+1464 |                              for navigationAction: WKNavigationAction,
+1465 |                              windowFeatures: WKWindowFeatures) -> WKWebView? {
+1466 |         let url = navigationAction.request.url
      |                                    `- warning: main actor-isolated property 'request' can not be referenced from a nonisolated context
-1355 |         Task { @MainActor in
-1356 |             if let url {
+1467 |         Task { @MainActor in
+1468 |             if let url {
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKNavigationAction.h:78:53: note: property declared here
  76 | /*! @abstract The navigation's request. 
@@ -224,13 +224,13 @@ ZipWriter.swift
  79 | 
  80 | /*! @abstract A value indicating whether the web content used a download attribute to indicate that this should be downloaded.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1368:35: warning: main actor-isolated property 'linkURL' can not be referenced from a nonisolated context
-1366 |                              contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
-1367 |                              completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
-1368 |         let linkURL = elementInfo.linkURL
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1480:35: warning: main actor-isolated property 'linkURL' can not be referenced from a nonisolated context
+1478 |                              contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
+1479 |                              completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
+1480 |         let linkURL = elementInfo.linkURL
      |                                   `- warning: main actor-isolated property 'linkURL' can not be referenced from a nonisolated context
-1369 |         Task { @MainActor in
-1370 |             completionHandler(self.contextMenuConfiguration(linkURL: linkURL))
+1481 |         Task { @MainActor in
+1482 |             completionHandler(self.contextMenuConfiguration(linkURL: linkURL))
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKContextMenuElementInfo.h:40:50: note: property declared here
 38 | - (instancetype)init NS_UNAVAILABLE;
@@ -240,13 +240,13 @@ ZipWriter.swift
 41 | 
 42 | @end
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1530:20: warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
-1528 |     nonisolated func userContentController(_ userContentController: WKUserContentController,
-1529 |                                            didReceive message: WKScriptMessage) {
-1530 |         if message.name == Self.blobMessageName {
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1642:20: warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
+1640 |     nonisolated func userContentController(_ userContentController: WKUserContentController,
+1641 |                                            didReceive message: WKScriptMessage) {
+1642 |         if message.name == Self.blobMessageName {
      |                    `- warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
-1531 |             guard let body = message.body as? [String: Any] else { return }
-1532 |             Task { @MainActor in self.handleBlobMessage(body) }
+1643 |             guard let body = message.body as? [String: Any] else { return }
+1644 |             Task { @MainActor in self.handleBlobMessage(body) }
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:57:49: note: property declared here
 55 | /*! @abstract The name of the message handler to which the message is sent.
@@ -256,7 +256,7 @@ ZipWriter.swift
 58 | 
 59 | /*! @abstract The content world from which the message was sent. */
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1530:33: warning: main actor-isolated static property 'blobMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1642:33: warning: main actor-isolated static property 'blobMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
   51 |     static let mediaMessageName = "snapMedia"
   52 |     /// blob: download bridge (v0.4.10) — see blobDownloadScript.
   53 |     static let blobMessageName = "snapBlob"
@@ -264,20 +264,20 @@ ZipWriter.swift
   54 | 
   55 |     /// The model's download store, wired in makeTab. Used directly
      :
-1528 |     nonisolated func userContentController(_ userContentController: WKUserContentController,
-1529 |                                            didReceive message: WKScriptMessage) {
-1530 |         if message.name == Self.blobMessageName {
+1640 |     nonisolated func userContentController(_ userContentController: WKUserContentController,
+1641 |                                            didReceive message: WKScriptMessage) {
+1642 |         if message.name == Self.blobMessageName {
      |                                 `- warning: main actor-isolated static property 'blobMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
-1531 |             guard let body = message.body as? [String: Any] else { return }
-1532 |             Task { @MainActor in self.handleBlobMessage(body) }
+1643 |             guard let body = message.body as? [String: Any] else { return }
+1644 |             Task { @MainActor in self.handleBlobMessage(body) }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1531:38: warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
-1529 |                                            didReceive message: WKScriptMessage) {
-1530 |         if message.name == Self.blobMessageName {
-1531 |             guard let body = message.body as? [String: Any] else { return }
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1643:38: warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
+1641 |                                            didReceive message: WKScriptMessage) {
+1642 |         if message.name == Self.blobMessageName {
+1643 |             guard let body = message.body as? [String: Any] else { return }
      |                                      `- warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
-1532 |             Task { @MainActor in self.handleBlobMessage(body) }
-1533 |             return
+1644 |             Task { @MainActor in self.handleBlobMessage(body) }
+1645 |             return
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:47:42: note: property declared here
 45 |  NSDictionary, and NSNull.
@@ -287,13 +287,13 @@ ZipWriter.swift
 48 | 
 49 | /*! @abstract The web view sending the message. */
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1535:23: warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
-1533 |             return
-1534 |         }
-1535 |         guard message.name == Self.mediaMessageName,
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1647:23: warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
+1645 |             return
+1646 |         }
+1647 |         guard message.name == Self.mediaMessageName,
      |                       `- warning: main actor-isolated property 'name' can not be referenced from a nonisolated context
-1536 |               let body = message.body as? [String: Any],
-1537 |               let type = body["type"] as? String else { return }
+1648 |               let body = message.body as? [String: Any],
+1649 |               let type = body["type"] as? String else { return }
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:57:49: note: property declared here
 55 | /*! @abstract The name of the message handler to which the message is sent.
@@ -303,7 +303,7 @@ ZipWriter.swift
 58 | 
 59 | /*! @abstract The content world from which the message was sent. */
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1535:36: warning: main actor-isolated static property 'mediaMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1647:36: warning: main actor-isolated static property 'mediaMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
   49 |     private var lastProbeRefresh: Date = .distantPast
   50 | 
   51 |     static let mediaMessageName = "snapMedia"
@@ -311,20 +311,20 @@ ZipWriter.swift
   52 |     /// blob: download bridge (v0.4.10) — see blobDownloadScript.
   53 |     static let blobMessageName = "snapBlob"
      :
-1533 |             return
-1534 |         }
-1535 |         guard message.name == Self.mediaMessageName,
+1645 |             return
+1646 |         }
+1647 |         guard message.name == Self.mediaMessageName,
      |                                    `- warning: main actor-isolated static property 'mediaMessageName' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
-1536 |               let body = message.body as? [String: Any],
-1537 |               let type = body["type"] as? String else { return }
+1648 |               let body = message.body as? [String: Any],
+1649 |               let type = body["type"] as? String else { return }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1536:34: warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
-1534 |         }
-1535 |         guard message.name == Self.mediaMessageName,
-1536 |               let body = message.body as? [String: Any],
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:1648:34: warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
+1646 |         }
+1647 |         guard message.name == Self.mediaMessageName,
+1648 |               let body = message.body as? [String: Any],
      |                                  `- warning: main actor-isolated property 'body' can not be referenced from a nonisolated context
-1537 |               let type = body["type"] as? String else { return }
-1538 |         switch type {
+1649 |               let type = body["type"] as? String else { return }
+1650 |         switch type {
 
 /Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKScriptMessage.h:47:42: note: property declared here
 45 |  NSDictionary, and NSNull.
@@ -333,205 +333,176 @@ ZipWriter.swift
    |                                          `- note: property declared here
 48 | 
 49 | /*! @abstract The web view sending the message. */
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:108:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 106 |             wire(manager.activeTab)
- 107 |         }
- 108 |         .onChange(of: manager.activeTabID) { _ in
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:115:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 113 |             applyWindowPayloadIfNeeded()
+ 114 |         }
+ 115 |         .onChange(of: manager.activeTabID) { _ in
      |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 109 |             wire(manager.activeTab)
- 110 |         }
+ 116 |             wire(manager.activeTab)
+ 117 |         }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:320:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 318 |         // keep the standard avoidance.
- 319 |         .ignoresSafeArea(.keyboard, edges: .bottom)
- 320 |         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:329:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 327 |         // keep the standard avoidance.
+ 328 |         .ignoresSafeArea(.keyboard, edges: .bottom)
+ 329 |         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
      |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 321 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
- 322 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
+ 330 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
+ 331 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:321:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 319 |         .ignoresSafeArea(.keyboard, edges: .bottom)
- 320 |         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
- 321 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:330:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 328 |         .ignoresSafeArea(.keyboard, edges: .bottom)
+ 329 |         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
+ 330 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
      |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 322 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
- 323 |         .onChange(of: addressFocused) { focused in
+ 331 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
+ 332 |         .onChange(of: addressFocused) { focused in
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:322:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 320 |         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
- 321 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
- 322 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:331:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 329 |         .onChange(of: tab.addressText) { _ in refreshSuggestions() }
+ 330 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
+ 331 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
      |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 323 |         .onChange(of: addressFocused) { focused in
- 324 |             if focused {
+ 332 |         .onChange(of: addressFocused) { focused in
+ 333 |             if focused {
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:323:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 321 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
- 322 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
- 323 |         .onChange(of: addressFocused) { focused in
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:332:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 330 |         .onChange(of: settings.searchEngine) { _ in refreshSuggestions() }
+ 331 |         .onChange(of: settings.searchSuggestionsEnabled) { _ in refreshSuggestions() }
+ 332 |         .onChange(of: addressFocused) { focused in
      |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 324 |             if focused {
- 325 |                 refreshSuggestions()
-
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:404:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 402 |             }
- 403 |         }
- 404 |         .onChange(of: tab.tabNotice) { notice in
-     |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 405 |             if let notice {
- 406 |                 showToast(notice)
+ 333 |             if focused {
+ 334 |                 refreshSuggestions()
 
 /Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:413:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 411 |         // download is no longer silent — the toast says what
- 412 |         // happened, and the file is in ⋯ → ダウンロード.
- 413 |         .onChange(of: manager.downloadNotice) { notice in
+ 411 |             }
+ 412 |         }
+ 413 |         .onChange(of: tab.tabNotice) { notice in
      |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
  414 |             if let notice {
  415 |                 showToast(notice)
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:419:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 417 |             }
- 418 |         }
- 419 |         .onChange(of: manager.addressFocusRequest) { _ in
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:422:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 420 |         // download is no longer silent — the toast says what
+ 421 |         // happened, and the file is in ⋯ → ダウンロード.
+ 422 |         .onChange(of: manager.downloadNotice) { notice in
      |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
- 420 |             addressFocused = true
- 421 |         }
+ 423 |             if let notice {
+ 424 |                 showToast(notice)
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1105:18: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
-1103 |                 .submitLabel(.search)
-1104 |                 .onSubmit { runFind(backwards: false) }
-1105 |                 .onChange(of: findQuery) { _ in runFind(backwards: false) }
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:431:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 429 |         // request that verifiably produced no window speaks up
+ 430 |         // here instead of failing silently like the old route.
+ 431 |         .onChange(of: manager.windowNotice) { notice in
+     |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 432 |             if let notice {
+ 433 |                 showToast(notice)
+
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:437:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 435 |             }
+ 436 |         }
+ 437 |         .onChange(of: manager.addressFocusRequest) { _ in
+     |          `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+ 438 |             addressFocused = true
+ 439 |         }
+
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1123:18: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
+1121 |                 .submitLabel(.search)
+1122 |                 .onSubmit { runFind(backwards: false) }
+1123 |                 .onChange(of: findQuery) { _ in runFind(backwards: false) }
      |                  `- warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead. [#DeprecatedDeclaration]
-1106 |             if findMiss {
-1107 |                 Text("見つかりません")
+1124 |             if findMiss {
+1125 |                 Text("見つかりません")
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1480:27: error: main actor-isolated property 'archiveSnapshot' can not be referenced from a nonisolated context
-1474 |     /// reopens as a start page). The privacy flag always rides
-1475 |     /// along so the receiver can rebuild the tab in the same class.
-1476 |     static func activity(for tab: BrowserTab) -> NSUserActivity {
-     |                 `- note: add '@MainActor' to make static method 'activity(for:)' part of global actor 'MainActor'
-1477 |         let activity = NSUserActivity(activityType: activityType)
-1478 |         activity.title = "タブを新しいウィンドウで開く"
-1479 |         var info: [String: Any] = [privateKey: tab.isPrivate]
-1480 |         if let item = tab.archiveSnapshot {
-     |                           `- error: main actor-isolated property 'archiveSnapshot' can not be referenced from a nonisolated context
-1481 |             info[archiveFolderKey] = item.folderName
-1482 |         } else if let urlString = tab.currentURLString {
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/SelfContainedHTML.swift:397:73: error: generic parameter 'ElementOfResult' could not be inferred
+395 |               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+396 |         else { return ([], []) }
+397 |         let resources = (object["resources"] as? [[String: Any]] ?? []).compactMap { entry in
+    |                                                                         `- error: generic parameter 'ElementOfResult' could not be inferred
+398 |             guard let token = entry["token"] as? String,
+399 |                   let url = entry["url"] as? String,
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:63:20: note: property declared here
-  61 | 
-  62 |     /// Set while this tab displays a saved snapshot instead of the live page.
-  63 |     @Published var archiveSnapshot: SnapshotItem?
-     |                    `- note: property declared here
-  64 |     private(set) var archiveFileURL: URL?
-  65 |     /// Kept after leaving an archive so back-navigation can restore it.
+Swift.Sequence.compactMap:2:24: note: in call to function 'compactMap'
+1 | protocol Sequence {
+2 | @inlinable public func compactMap<ElementOfResult>(_ transform: (Self.Element) throws -> ElementOfResult?) rethrows -> [ElementOfResult]}
+  |                        `- note: in call to function 'compactMap'
+3 | 
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1482:39: error: main actor-isolated property 'currentURLString' can not be referenced from a nonisolated context
-1474 |     /// reopens as a start page). The privacy flag always rides
-1475 |     /// along so the receiver can rebuild the tab in the same class.
-1476 |     static func activity(for tab: BrowserTab) -> NSUserActivity {
-     |                 `- note: add '@MainActor' to make static method 'activity(for:)' part of global actor 'MainActor'
-1477 |         let activity = NSUserActivity(activityType: activityType)
-1478 |         activity.title = "タブを新しいウィンドウで開く"
-     :
-1480 |         if let item = tab.archiveSnapshot {
-1481 |             info[archiveFolderKey] = item.folderName
-1482 |         } else if let urlString = tab.currentURLString {
-     |                                       `- error: main actor-isolated property 'currentURLString' can not be referenced from a nonisolated context
-1483 |             info[urlKey] = urlString
-1484 |         }
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/SelfContainedHTML.swift:403:65: error: generic parameter 'ElementOfResult' could not be inferred
+401 |             return Resource(token: token, url: url, kind: kind)
+402 |         }
+403 |         let media = (object["media"] as? [[String: Any]] ?? []).compactMap { entry in
+    |                                                                 `- error: generic parameter 'ElementOfResult' could not be inferred
+404 |             guard let file = entry["file"] as? String,
+405 |                   let url = entry["url"] as? String,
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserTab.swift:225:9: note: property declared here
- 223 |     func stop() { webView.stopLoading() }
- 224 | 
- 225 |     var currentURLString: String? {
-     |         `- note: property declared here
- 226 |         if let archiveSnapshot { return archiveSnapshot.url }
- 227 |         return webView.url?.absoluteString
+Swift.Sequence.compactMap:2:24: note: in call to function 'compactMap'
+1 | protocol Sequence {
+2 | @inlinable public func compactMap<ElementOfResult>(_ transform: (Self.Element) throws -> ElementOfResult?) rethrows -> [ElementOfResult]}
+  |                        `- note: in call to function 'compactMap'
+3 | 
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1498:22: warning: comparing non-optional value of type 'any Error' to 'nil' always returns true
-1496 |             nil, userActivity: activity(for: tab), options: nil
-1497 |         ) { error in
-1498 |             if error != nil { closeWork.cancel() }
-     |                      `- warning: comparing non-optional value of type 'any Error' to 'nil' always returns true
-1499 |         }
-1500 |         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: closeWork)
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/SelfContainedHTML.swift:414:68: warning: call to main actor-isolated instance method 'getAllCookies' in a synchronous nonisolated context [#ActorIsolatedCall]
+412 |     private static func allCookies(from webView: WKWebView) async -> [HTTPCookie] {
+413 |         await withCheckedContinuation { continuation in
+414 |             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies {
+    |                                                                    `- warning: call to main actor-isolated instance method 'getAllCookies' in a synchronous nonisolated context [#ActorIsolatedCall]
+415 |                 continuation.resume(returning: $0)
+416 |             }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1494:52: error: call to main actor-isolated instance method 'closeTab' in a synchronous nonisolated context [#ActorIsolatedCall]
-1492 |     /// that the error handler cancels if activation fails.
-1493 |     static func moveToNewWindow(_ tab: BrowserTab, manager: BrowserModel) {
-1494 |         let closeWork = DispatchWorkItem { manager.closeTab(tab) }
-     |                                                    `- error: call to main actor-isolated instance method 'closeTab' in a synchronous nonisolated context [#ActorIsolatedCall]
-1495 |         UIApplication.shared.requestSceneSessionActivation(
-1496 |             nil, userActivity: activity(for: tab), options: nil
+WebKit.WKHTTPCookieStore.getAllCookies:2:22: note: calls to instance method 'getAllCookies' from outside of its actor context are implicitly asynchronous
+1 | class WKHTTPCookieStore {
+2 | @MainActor open func getAllCookies(_ completionHandler: @escaping @MainActor @Sendable ([HTTPCookie]) -> Void)}
+  |                      `- note: calls to instance method 'getAllCookies' from outside of its actor context are implicitly asynchronous
+3 | 
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserModel.swift:122:10: note: calls to instance method 'closeTab' from outside of its actor context are implicitly asynchronous
-120 |     }
-121 | 
-122 |     func closeTab(_ tab: BrowserTab) {
-    |          `- note: calls to instance method 'closeTab' from outside of its actor context are implicitly asynchronous
-123 |         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
-124 |         let wasActive = tab.id == activeTabID
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/SelfContainedHTML.swift:414:52: warning: main actor-isolated property 'httpCookieStore' can not be referenced from a nonisolated context
+412 |     private static func allCookies(from webView: WKWebView) async -> [HTTPCookie] {
+413 |         await withCheckedContinuation { continuation in
+414 |             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies {
+    |                                                    `- warning: main actor-isolated property 'httpCookieStore' can not be referenced from a nonisolated context
+415 |                 continuation.resume(returning: $0)
+416 |             }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1531:28: error: main actor-isolated property 'tabs' can not be referenced from a nonisolated context
-1528 |     /// geometry), so the windows open wherever the system puts
-1529 |     /// them — the final snap into a tile stays an OS gesture.
-1530 |     static func splitWindows(count: Int, isPrivate: Bool, manager: BrowserModel) {
-     |                 `- note: add '@MainActor' to make static method 'splitWindows(count:isPrivate:manager:)' part of global actor 'MainActor'
-1531 |         let tray = manager.tabs.filter { $0.isPrivate == isPrivate }
-     |                            `- error: main actor-isolated property 'tabs' can not be referenced from a nonisolated context
-1532 |         guard count >= 2, !tray.isEmpty else { return }
-1533 |         let keep = manager.activeTab.isPrivate == isPrivate
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebsiteDataStore.h:85:52: note: property declared here
+ 83 | 
+ 84 | /*! @abstract Returns the cookie store representing HTTP cookies in this website data store. */
+ 85 | @property (nonatomic, readonly) WKHTTPCookieStore *httpCookieStore API_AVAILABLE(macos(10.13), ios(11.0));
+    |                                                    `- note: property declared here
+ 86 | 
+ 87 | /*! @abstract Get identifier for a data store.
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserModel.swift:13:33: note: property declared here
- 11 | @MainActor
- 12 | final class BrowserModel: ObservableObject {
- 13 |     @Published private(set) var tabs: [BrowserTab] = []
-    |                                 `- note: property declared here
- 14 |     @Published var activeTabID: UUID = UUID()
- 15 | 
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/SelfContainedHTML.swift:414:35: warning: main actor-isolated property 'websiteDataStore' can not be referenced from a nonisolated context
+412 |     private static func allCookies(from webView: WKWebView) async -> [HTTPCookie] {
+413 |         await withCheckedContinuation { continuation in
+414 |             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies {
+    |                                   `- warning: main actor-isolated property 'websiteDataStore' can not be referenced from a nonisolated context
+415 |                 continuation.resume(returning: $0)
+416 |             }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1533:28: error: main actor-isolated property 'activeTab' can not be referenced from a nonisolated context
-1528 |     /// geometry), so the windows open wherever the system puts
-1529 |     /// them — the final snap into a tile stays an OS gesture.
-1530 |     static func splitWindows(count: Int, isPrivate: Bool, manager: BrowserModel) {
-     |                 `- note: add '@MainActor' to make static method 'splitWindows(count:isPrivate:manager:)' part of global actor 'MainActor'
-1531 |         let tray = manager.tabs.filter { $0.isPrivate == isPrivate }
-1532 |         guard count >= 2, !tray.isEmpty else { return }
-1533 |         let keep = manager.activeTab.isPrivate == isPrivate
-     |                            `- error: main actor-isolated property 'activeTab' can not be referenced from a nonisolated context
-1534 |             ? manager.activeTab
-1535 |             : tray[0]
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebViewConfiguration.h:126:51: note: property declared here
+124 | /*! @abstract The website data store to be used by the web view.
+125 |  */
+126 | @property (nonatomic, strong) WKWebsiteDataStore *websiteDataStore API_AVAILABLE(macos(10.11), ios(9.0));
+    |                                                   `- note: property declared here
+127 | 
+128 | /*! @abstract A Boolean value indicating whether the web view suppresses
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserModel.swift:54:9: note: property declared here
- 52 |     @Published var addressFocusRequest: Int = 0
- 53 | 
- 54 |     var activeTab: BrowserTab {
-    |         `- note: property declared here
- 55 |         tabs.first { $0.id == activeTabID } ?? tabs[0]
- 56 |     }
+/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/SelfContainedHTML.swift:414:21: warning: main actor-isolated property 'configuration' can not be referenced from a nonisolated context
+412 |     private static func allCookies(from webView: WKWebView) async -> [HTTPCookie] {
+413 |         await withCheckedContinuation { continuation in
+414 |             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies {
+    |                     `- warning: main actor-isolated property 'configuration' can not be referenced from a nonisolated context
+415 |                 continuation.resume(returning: $0)
+416 |             }
 
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/ContentView.swift:1534:23: error: main actor-isolated property 'activeTab' can not be referenced from a nonisolated context
-1528 |     /// geometry), so the windows open wherever the system puts
-1529 |     /// them — the final snap into a tile stays an OS gesture.
-1530 |     static func splitWindows(count: Int, isPrivate: Bool, manager: BrowserModel) {
-     |                 `- note: add '@MainActor' to make static method 'splitWindows(count:isPrivate:manager:)' part of global actor 'MainActor'
-1531 |         let tray = manager.tabs.filter { $0.isPrivate == isPrivate }
-1532 |         guard count >= 2, !tray.isEmpty else { return }
-1533 |         let keep = manager.activeTab.isPrivate == isPrivate
-1534 |             ? manager.activeTab
-     |                       `- error: main actor-isolated property 'activeTab' can not be referenced from a nonisolated context
-1535 |             : tray[0]
-1536 |         guard let keepIndex = tray.firstIndex(where: { $0.id == keep.id })
-
-/Users/runner/work/pd9w/pd9w/SnapBrowser/SnapBrowser/BrowserModel.swift:54:9: note: property declared here
- 52 |     @Published var addressFocusRequest: Int = 0
- 53 | 
- 54 |     var activeTab: BrowserTab {
-    |         `- note: property declared here
- 55 |         tabs.first { $0.id == activeTabID } ?? tabs[0]
- 56 |     }
+/Applications/Xcode_26.3.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:92:63: note: property declared here
+ 90 | /*! @abstract A copy of the configuration with which the web view was
+ 91 |  initialized. */
+ 92 | @property (nonatomic, readonly, copy) WKWebViewConfiguration *configuration;
+    |                                                               `- note: property declared here
+ 93 | 
+ 94 | /*! @abstract The web view's navigation delegate. */
 
 [#ActorIsolatedCall]: <https://docs.swift.org/compiler/documentation/diagnostics/actor-isolated-call>
-[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
 typecheck exit: 1
