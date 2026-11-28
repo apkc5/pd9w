@@ -22,6 +22,13 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     static let desktopUserAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
 
+    /// Explicit mobile UA (current iPhone Safari format). Mobile mode
+    /// must NOT fall back to the WebKit default UA: on iPad that
+    /// default is desktop-class (Macintosh), so sites such as pixiv
+    /// served their PC layout even with desktop mode off (v0.4.15).
+    static let mobileUserAgent =
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
+
     @Published var addressText: String = ""
     @Published var pageTitle: String = ""
     @Published var canGoBack: Bool = false
@@ -172,9 +179,10 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
-        if desktopMode {
-            webView.customUserAgent = Self.desktopUserAgent
-        }
+        // Pin the UA explicitly from birth: desktop tabs get the
+        // desktop UA, mobile tabs the iPhone UA (never nil — the
+        // iPad WebKit default UA is desktop-class, see mobileUserAgent).
+        webView.customUserAgent = desktopMode ? Self.desktopUserAgent : Self.mobileUserAgent
         webView.pageZoom = CGFloat(settings.textSizePercent) / 100.0
 
         // Media probe (v0.4.6): one user script in every frame —
@@ -308,7 +316,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     func setDesktopMode(_ on: Bool) {
         guard on != desktopMode else { return }
         desktopMode = on
-        webView.customUserAgent = on ? Self.desktopUserAgent : nil
+        webView.customUserAgent = on ? Self.desktopUserAgent : Self.mobileUserAgent
         if !showsStartPage, archiveSnapshot == nil {
             reload()
         }
