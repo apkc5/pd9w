@@ -87,6 +87,12 @@ final class BrowserModel: ObservableObject {
         // Shields (v0.4.14): compile the rule list and hand it to
         // the restored tabs once compilation finishes.
         shields.refresh(settings: settings, tabs: tabs)
+        // Playlist downloads (v0.4.14) borrow the ACTIVE tab's
+        // cookies + UA, so login-walled media is fetched the way
+        // the page itself would fetch it.
+        playlist.requestContextProvider = { [weak self] url in
+            await self?.activeTab.downloadHeaders(for: url) ?? [:]
+        }
     }
 
     // MARK: - Tab operations
@@ -108,6 +114,8 @@ final class BrowserModel: ObservableObject {
         }
         // blob: downloads stream through the store directly.
         tab.downloadStore = downloads
+        // Playlist blob transfers + header borrowing (v0.4.14).
+        tab.playlistStore = playlist
         // Shields (v0.4.14): a tab created after the first compile
         // picks the current rule list up here; tabs created before
         // it are covered by the refresh() in init.

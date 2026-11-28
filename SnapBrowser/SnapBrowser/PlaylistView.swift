@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import AVFoundation
 import UIKit
 
 /// Playlist screen (v0.4.6): the media shelf. Rows show thumbnail,
@@ -427,6 +428,15 @@ struct PlaylistPlayerView: View {
             }
         }
         .onAppear {
+            // Playback category (v0.4.14): without it the player
+            // honours the silent switch and Playlist videos are
+            // mute whenever the device is silenced — the user's
+            // "通知ONオフにしてると音聞こえない" report. A video
+            // the user explicitly tapped Play on is meant to have
+            // sound.
+            let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(.playback, mode: .moviePlayback)
+            try? session.setActive(true)
             let newPlayer = AVPlayer(url: url)
             player = newPlayer
             newPlayer.play()
@@ -525,14 +535,18 @@ struct AddURLsSheet: View {
 // MARK: - Detected media picker (save badge / ⋯ menu)
 
 /// Lists the media detected on the current page so the user can pick
-/// which ones go into the playlist (or take them all). blob: rows are
-/// shown but disabled, with the honest reason — a blob URL is a
-/// page-session handle (MSE) and cannot be saved from the URL.
+/// which ones go into the playlist (or take them all). blob: rows
+/// are actionable since v0.4.14: tapping one runs the classifier in
+/// the page (plain Blob -> saved through the bridge; MSE -> the
+/// real stream URL is looked up). The old blanket "保存できません
+/// （blob:）" was factually wrong for plain Blobs and is gone.
 struct DetectedMediaSheet: View {
     @ObservedObject var playlist: PlaylistStore
     let items: [DetectedMedia]
     let pageTitle: String
+    let pageURL: String?
     var onAdded: (Int) -> Void
+    var onBlobSelected: ((DetectedMedia) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
 
@@ -552,22 +566,49 @@ struct DetectedMediaSheet: View {
                 if !blockedItems.isEmpty {
                     Section {
                         ForEach(blockedItems) { media in
-                            HStack(spacing: 10) {
-                                Image(systemName: "exclamationmark.circle")
-                                    .foregroundStyle(.secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(media.isBlob ? "保存できません（blob:）" : "保存できません")
-                                        .font(.subheadline)
+                            if media.isBlob {
+                                Button {
+                                    dismiss()
+                                    onBlobSelected?(media)
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "questionmark.circle")
+                                            .foregroundStyle(Theme.cobalt)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("blob: の動画（タップで判別）")
+                                                .font(.subheadline)
+                                                .foregroundStyle(Theme.ink)
+                                            Text(media.url)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "exclamationmark.circle")
                                         .foregroundStyle(.secondary)
-                                    Text(media.url)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("保存できません")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Text(media.url)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
                             }
                         }
                     } footer: {
-                        Text("blob: の動画はページ内再生専用（MSE）のため、URLからは保存できません。")
+                        Text("blob: の動画は判別してから保存します。そのまま保存できるものと、再生専用（MSE）で裏の実URLを探すものがあります。")
                     }
                 }
             }
@@ -644,7 +685,7 @@ struct DetectedMediaSheet: View {
     private func addSelected() {
         var added = 0
         for media in httpItems where selected.contains(media.url) {
-            if playlist.add(title: title(for: media), url: media.url, pageURL: nil) {
+            if playlist.add(title: title(for: media), url: media.url, pageURL: pageURL) {
                 added += 1
             }
         }
