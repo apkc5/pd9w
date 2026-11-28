@@ -788,6 +788,13 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         var htmlBytes: Int?
         var fullHTMLBytes: Int?
         var assetsInlined: String?
+        /// Bundled-media tally "saved/attempted" (v0.4.13 phase
+        /// 2b), nil when the page had no direct-file media.
+        var mediaBundled: String?
+        /// The resource budget stopped the archive fetch early;
+        /// the completion message says so instead of staying
+        /// silent about the shortfall.
+        var assetsCapped: Bool
         var failures: [String]
     }
 
@@ -850,13 +857,22 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
                 failures.append("HTML: \(error.localizedDescription)")
             }
 
-            // 5) Self-contained HTML (styles/images inlined for offline view).
+            // 5) Self-contained HTML (styles/images inlined for offline view),
+            //    plus any bundled direct-file media (phase 2b), which
+            //    arrives as temp files and is moved into the folder
+            //    by the store — never loaded into memory here.
             var fullHTMLData: Data?
             var assetsNote: String?
+            var mediaFiles: [(name: String, tempURL: URL)] = []
+            var mediaAttempted = 0
+            var assetsCapped = false
             do {
                 let built = try await SelfContainedHTML.build(from: webView)
                 fullHTMLData = built.data
                 assetsNote = "\(built.inlined)/\(built.total)"
+                assetsCapped = built.assetsCapped
+                mediaAttempted = built.mediaAttempted
+                mediaFiles = built.media.map { (name: $0.fileName, tempURL: $0.tempFile) }
             } catch {
                 failures.append("自己完結HTML: \(error.localizedDescription)")
             }
@@ -866,6 +882,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
                                     imageBytes: nil, archiveBytes: nil,
                                     textChars: nil, htmlBytes: nil,
                                     fullHTMLBytes: nil, assetsInlined: assetsNote,
+                                    mediaBundled: nil, assetsCapped: assetsCapped,
                                     failures: failures)
             do {
                 let saved = try store.save(title: title,
@@ -874,15 +891,25 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
                                            archiveData: archiveData,
                                            text: text,
                                            htmlData: htmlData,
-                                           fullHTMLData: fullHTMLData)
+                                           fullHTMLData: fullHTMLData,
+                                           mediaFiles: mediaFiles)
                 result.imageBytes = saved.imageBytes
                 result.archiveBytes = saved.archiveBytes
                 result.textChars = saved.textChars
                 result.htmlBytes = saved.htmlBytes
                 result.fullHTMLBytes = saved.fullHTMLBytes
+                if mediaAttempted > 0 {
+                    result.mediaBundled = "\(saved.mediaCount)/\(mediaAttempted)"
+                }
                 result.failures.append(contentsOf: saved.failures)
             } catch {
                 result.failures.append("保存: \(error.localizedDescription)")
+            }
+            // Any media temp the store did not consume (save threw
+            // before the moves) must not be left behind.
+            for media in mediaFiles
+            where FileManager.default.fileExists(atPath: media.tempURL.path) {
+                try? FileManager.default.removeItem(at: media.tempURL)
             }
 
             lastSnapResult = result
