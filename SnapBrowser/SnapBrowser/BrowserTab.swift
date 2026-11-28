@@ -763,8 +763,11 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// A JS string literal for `value` (JSON encoding is a valid
     /// JS string literal for this use).
     static func jsStringLiteral(_ value: String) -> String {
+        let quote = "\""
         guard let data = try? JSONSerialization.data(withJSONObject: [value]),
-              let text = String(data: data, encoding: .utf8) else { return """" }
+              let text = String(data: data, encoding: .utf8) else {
+            return quote + quote
+        }
         return String(text.dropFirst().dropLast())
     }
 
