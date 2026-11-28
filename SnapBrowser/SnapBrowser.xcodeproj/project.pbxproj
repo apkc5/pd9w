@@ -36,6 +36,7 @@
 		0C0000000000000000000028 /* WalkingPet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000028 /* WalkingPet.swift */; };
 		0C0000000000000000000029 /* ZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000029 /* ZipWriter.swift */; };
 		0C0000000000000000000030 /* Shields.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000030 /* Shields.swift */; };
+		0C0000000000000000000031 /* HLSDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000031 /* HLSDownloader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -70,6 +71,7 @@
 		0B0000000000000000000028 /* WalkingPet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkingPet.swift; sourceTree = "<group>"; };
 		0B0000000000000000000029 /* ZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriter.swift; sourceTree = "<group>"; };
 		0B0000000000000000000030 /* Shields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shields.swift; sourceTree = "<group>"; };
+		0B0000000000000000000031 /* HLSDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSDownloader.swift; sourceTree = "<group>"; };
 		0B0000000000000000000032 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -122,6 +124,7 @@
 				0B0000000000000000000028 /* WalkingPet.swift */,
 				0B0000000000000000000029 /* ZipWriter.swift */,
 				0B0000000000000000000030 /* Shields.swift */,
+				0B0000000000000000000031 /* HLSDownloader.swift */,
 				0B0000000000000000000032 /* Info.plist */,
 				0B0000000000000000000008 /* Assets.xcassets */,
 				0B0000000000000000000019 /* LaunchScreen.storyboard */,
@@ -245,6 +248,7 @@
 				0C0000000000000000000028 /* WalkingPet.swift in Sources */,
 				0C0000000000000000000029 /* ZipWriter.swift in Sources */,
 				0C0000000000000000000030 /* Shields.swift in Sources */,
+				0C0000000000000000000031 /* HLSDownloader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
