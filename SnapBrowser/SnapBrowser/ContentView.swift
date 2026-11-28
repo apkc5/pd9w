@@ -1462,7 +1462,7 @@ private struct BrowserTabView: View {
             "画像: \(fmt(result.imageBytes))",
             "アーカイブ(.webarchive): \(fmt(result.archiveBytes))",
             "HTML: \(fmt(result.htmlBytes))",
-            "自己完結HTML: \(fmt(result.fullHTMLBytes))" + (result.assetsInlined.map { " (資源 \($0) 内包)" } ?? ""),
+            "自己完結HTML: \(fmt(result.fullHTMLBytes))" + (result.assetsInlined.map { " (リソース \($0) 件を取り込み)" } ?? ""),
             "テキスト: \(result.textChars.map { "\($0)文字" } ?? "失敗")"
         ]
         if !result.failures.isEmpty {

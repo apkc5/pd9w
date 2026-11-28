@@ -804,6 +804,12 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
             let sourceURL = webView.url ?? URL(string: "https://example.com")!
             let title = webView.title ?? sourceURL.host ?? "ページ"
 
+            // 0) Prime lazy loading (v0.4.13): scroll through the
+            // page once so lazy images fire before ANY capture
+            // reads the page, then restore the scroll position.
+            // Best-effort and time-capped — never blocks the snap.
+            await SelfContainedHTML.primeLazyLoads(in: webView)
+
             // 1) Full-page image (frame-resize capture; falls back to viewport).
             var imageData: Data?
             do {
@@ -885,8 +891,9 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     }
 
     /// Full-page capture by temporarily growing the web view to the page's
-    /// content height, then snapshotting the whole frame. Pages taller than
-    /// the cap fall back to the visible viewport (honest limitation).
+    /// content height, then snapshotting the whole frame in slices
+    /// stitched at 2x (captureFullHeight). Pages taller than the cap
+    /// fall back to the visible viewport (honest limitation).
     private func captureFullPageImage() async throws -> UIImage {
         let webView = self.webView
         let scrollView = webView.scrollView
@@ -918,9 +925,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         // layout pass anyway; this keeps it right immediately.)
         let restoreFrame = webView.superview?.bounds ?? originalFrame
         do {
-            let config = WKSnapshotConfiguration()
-            config.rect = webView.bounds
-            let image = try await Self.takeSnapshot(of: webView, configuration: config)
+            let image = try await Self.captureFullHeight(of: webView)
             webView.frame = restoreFrame
             scrollView.contentOffset = originalOffset
             return image
@@ -928,6 +933,56 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
             webView.frame = restoreFrame
             scrollView.contentOffset = originalOffset
             return try await snapshotCurrentView()
+        }
+    }
+
+    /// Captures the (already frame-grown) web view in horizontal
+    /// slices and stitches them into one full-page image
+    /// (v0.4.13). takeSnapshot renders at the window's display
+    /// scale — 2x on a retina iPad — but a single snapshot of a
+    /// very tall page can exceed the renderer's texture limits
+    /// and fail or silently degrade to a smaller render; slicing
+    /// keeps each render bounded (4,000pt) so the 2x result
+    /// actually holds for tall pages. The stitched canvas targets
+    /// 2x; when the estimated pixel memory is too large it drops
+    /// to 1x instead (the honest fallback) rather than risking
+    /// the process. Any failure throws, and the caller falls back
+    /// to the visible-viewport snapshot, as before.
+    private static func captureFullHeight(of webView: WKWebView) async throws -> UIImage {
+        let bounds = webView.bounds
+        let displayScale = webView.traitCollection.displayScale
+        let targetScale: CGFloat = displayScale >= 2 ? 2 : max(displayScale, 1)
+        let estimatedBytes = Double(bounds.width) * Double(bounds.height)
+            * Double(targetScale * targetScale) * 4
+        let renderScale: CGFloat = estimatedBytes <= 240_000_000 ? targetScale : 1
+
+        let sliceHeight: CGFloat = 4_000
+        var slices: [(y: CGFloat, image: UIImage)] = []
+        var y: CGFloat = 0
+        while y < bounds.height {
+            let height = min(sliceHeight, bounds.height - y)
+            let config = WKSnapshotConfiguration()
+            config.rect = CGRect(x: 0, y: y, width: bounds.width, height: height)
+            let image = try await takeSnapshot(of: webView, configuration: config)
+            slices.append((y, image))
+            y += height
+        }
+        guard let first = slices.first else {
+            throw NSError(domain: "SnapBrowser", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "スナップショット撮影に失敗"])
+        }
+        if slices.count == 1 { return first.image }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = renderScale
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: bounds.size, format: format)
+        return renderer.image { _ in
+            for slice in slices {
+                slice.image.draw(in: CGRect(x: 0, y: slice.y,
+                                            width: bounds.width,
+                                            height: slice.image.size.height))
+            }
         }
     }
 
