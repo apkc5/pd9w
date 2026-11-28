@@ -98,9 +98,9 @@ final class BrowserModel: ObservableObject {
     }
 
     @discardableResult
-    func newTab(url: URL? = nil) -> BrowserTab {
+    func newTab(url: URL? = nil, isPrivate: Bool = false) -> BrowserTab {
         activeTab.capturePreview()
-        let tab = makeTab(startURL: url)
+        let tab = makeTab(startURL: url, isPrivate: isPrivate)
         tabs.append(tab)
         activeTabID = tab.id
         persistSession()
@@ -270,8 +270,11 @@ final class BrowserModel: ObservableObject {
     }
 
     /// Opens a saved snapshot in a fresh tab, like the Android version.
-    func openArchive(item: SnapshotItem, store: SnapshotStore) {
-        let tab = newTab()
+    /// `isPrivate` exists for the tear-off / split-window receiver
+    /// (v0.4.12): an archive tab moved out of a private context must
+    /// land in a private tab in the new window, never a normal one.
+    func openArchive(item: SnapshotItem, store: SnapshotStore, isPrivate: Bool = false) {
+        let tab = newTab(isPrivate: isPrivate)
         tab.openArchive(item: item, store: store)
         persistSession()
     }
